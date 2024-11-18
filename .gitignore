@@ -6,7 +6,7 @@ notebook/
 *.sh
 aedat-text-test.txt
 input/*
-
+output/*
 *.avi
 v2e_output*
 v2e-args*
