@@ -13,4 +13,4 @@ input_framerate=$2
 echo "Input folder path: $input_folder"
 echo "Input framerate: $input_framerate"
 
-python v2e.py -i $input_folder --input_frame_rate $input_framerate --auto_timestamp_resolution --dvs640 --dvs_params 'clean'
+python v2e.py -i $input_folder --input_frame_rate $input_framerate --auto_timestamp_resolution --dvs128 --dvs_params 'clean' --batch_size 16
