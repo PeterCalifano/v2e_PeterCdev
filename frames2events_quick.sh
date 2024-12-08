@@ -31,7 +31,7 @@ fi
 if [ "$#" -lt 3 ]; then
     echo "Event threshold not provided. Using default value of 0.005."
 fi
-event_thr=${3:-0.07}  # Set a default value if the third argument is not provided
+event_thr=${3:-0.05}  # Set a default value if the third argument is not provided
 
 # Assign inputs to variables
 input_folder=$1
@@ -45,7 +45,7 @@ echo "Event threshold: $event_thr"
 # Get location of v2e.py from whichs
 #--auto_timestamp_resolution
 #--timestamp_resolution 0.05
-python $v2e_location -i $input_folder --input_frame_rate $input_framerate --pos_thres $event_thr --neg_thres $event_thr --timestamp_resolution 0.0001 --auto_timestamp_resolution --batch_size 32 --output_height 256 --output_width 256 --slomo_stats_plot 
+python $v2e_location -i $input_folder --input_frame_rate $input_framerate --pos_thres $event_thr --neg_thres $event_thr --timestamp_resolution 0.01 --auto_timestamp_resolution --batch_size 40 --output_height 256 --output_width 256 --slomo_stats_plot 
 
 # Deactivate the virtual environment
 #deactivate
