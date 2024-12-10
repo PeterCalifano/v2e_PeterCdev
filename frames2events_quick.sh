@@ -17,6 +17,7 @@ fi
 # Save the current directory
 current_dir=$(pwd)
 
+echo "Sourcing virtual environment in $DIR"
 cd $DIR
 source .venvEventBased/bin/activate
 cd $current_dir
