@@ -30,7 +30,7 @@ fi
 
 # Check if the third argument is passed
 if [ "$#" -lt 3 ]; then
-    echo "Event threshold not provided. Using default value of 0.005."
+    echo "Event threshold not provided. Using default value of 0.05."
 fi
 event_thr=${3:-0.05}  # Set a default value if the third argument is not provided
 
@@ -48,9 +48,9 @@ echo "Event threshold: $event_thr"
 #--timestamp_resolution 0.05
 python $v2e_location -i $input_folder \
 --auto_timestamp_resolution --save_dvs_model_state --show_dvs_model_state all \
---vid_orig None --crop '256, 256, 256, 256' --dvs_exposure count 1000 --input_frame_rate $input_framerate \
---pos_thres $event_thr --neg_thres $event_thr \
---batch_size 40 --output_height 512 --output_width 512 --slomo_stats_plot
+--vid_orig None --crop '128, 128, 128, 128' --dvs_exposure duration 0.1 --input_frame_rate $input_framerate \
+--pos_thres $event_thr --neg_thres $event_thr --cutoff_hz 1.5 --dvs_text events_data_txt --dvs_h5 events_data_dbase \
+--batch_size 40 --output_height 512 --output_width 512 --slomo_stats_plot --ddd_output
 
 # Deactivate the virtual environment
 #deactivate
