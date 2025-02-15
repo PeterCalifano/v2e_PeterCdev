@@ -46,11 +46,11 @@ echo "Event threshold: $event_thr"
 # If output folder is provided, use it
 if [ -z "$output_folder" ]; then
     folder_out_option=""
-    unique_output_folder_bool=1
+    unique_output_folder_bool=0
 else
     folder_out_option="-o $output_folder"
     echo "Output folder: $output_folder"
-    unique_output_folder_bool=0
+    unique_output_folder_bool=1
 
     # Create the output folder if it does not exist
     mkdir -p $output_folder
