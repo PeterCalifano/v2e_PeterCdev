@@ -10,7 +10,7 @@ echo "v2e location: $v2e_location"
 
 # If empty string, then v2e is not in the PATH
 if [ -z "$v2e_location" ]; then
-    echo "v2e is not in the PATH. Have you installed v2e by running install_v2e_linux? There should be a symlink in /usr/local/bin."
+    echo "v2e is not in the PATH. Have you installed v2e by running install_v2e_venv? There should be a symlink in /usr/local/bin in case. Else, if no sudo is allowed, simply make sure it can be found as symlink to v2e.py in the PATH."
     exit 1
 fi
 
