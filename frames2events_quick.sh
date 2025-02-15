@@ -1,4 +1,6 @@
 #!/bin/bash
+# Export if running headless TODO verify it works
+# export QT_QPA_PLATFORM=offscreen
 
 # Source the virtual environment in the root folder of the v2e repository
 DIR="$( cd "$( dirname "$(readlink -f "${BASH_SOURCE[0]}")" )" && pwd )"
@@ -46,12 +48,10 @@ echo "Event threshold: $event_thr"
 # If output folder is provided, use it
 if [ -z "$output_folder" ]; then
     folder_out_option=""
-    unique_output_folder_bool=0
     overwrite_output_folder_option=""
 else
     folder_out_option="-o $output_folder"
     echo "Output folder: $output_folder"
-    unique_output_folder_bool=1
     overwrite_output_folder_option=--overwrite
 
     # Create the output folder if it does not exist
@@ -63,11 +63,11 @@ fi
 #--timestamp_resolution 0.05
 # --dvs_exposure count 1000
 python $v2e_location -i $input_folder \
---timestamp_resolution 0.05 --save_dvs_model_state --show_dvs_model_state all \
---vid_orig None --crop '256, 256, 0, 0' --dvs_exposure duration 0.05 --input_frame_rate $input_framerate \
+--timestamp_resolution 0.01 --save_dvs_model_state --show_dvs_model_state all \
+--vid_orig None --crop '256, 256, 0, 0' --dvs_exposure duration 0.1 --input_frame_rate $input_framerate \
 --pos_thres $event_thr --neg_thres $event_thr --photoreceptor_noise \
---batch_size 4 --output_height 1523 --output_width 1523 --slomo_stats_plot --cutoff_hz 0.5 \
---dvs_text events_stream_txt --ddd_output $folder_out_option --no_preview --unique_output_folder $unique_output_folder_bool $overwrite_output_folder_option 
+--batch_size 4 --output_height 1536 --output_width 1536 --slomo_stats_plot --cutoff_hz 0.35 \
+--dvs_text events_stream_txt --ddd_output $folder_out_option --no_preview $overwrite_output_folder_option 
 
 # Deactivate the virtual environment
 #deactivate
