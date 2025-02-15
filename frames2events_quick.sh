@@ -28,20 +28,33 @@ if [ "$#" -lt 2 ]; then
     exit 1
 fi
 
-# Check if the third argument is passed
-if [ "$#" -lt 3 ]; then
-    echo "Event threshold not provided. Using default value of 0.05."
-fi
-event_thr=${3:-0.06}  # Set a default value if the third argument is not provided
-
 # Assign inputs to variables
 input_folder=$1
 input_framerate=$2
-#output_folder=$3
+output_folder=$3
+
+# Check if the forth argument is passed
+if [ "$#" -lt 4 ]; then
+    echo "Event threshold not provided. Using default value of 0.05."
+fi
+event_thr=${4:-0.08}  # Set a default value if the third argument is not provided
 
 echo "Input folder path: $input_folder"
 echo "Input framerate: $input_framerate"
 echo "Event threshold: $event_thr"
+
+# If output folder is provided, use it
+if [ -z "$output_folder" ]; then
+    folder_out_option=""
+    unique_output_folder_bool=1
+else
+    folder_out_option="-o $output_folder"
+    echo "Output folder: $output_folder"
+    unique_output_folder_bool=0
+
+    # Create the output folder if it does not exist
+    mkdir -p $output_folder
+fi
 
 # Get location of v2e.py from whichs
 #--auto_timestamp_resolution
@@ -49,9 +62,9 @@ echo "Event threshold: $event_thr"
 # --dvs_exposure count 1000
 python $v2e_location -i $input_folder \
 --timestamp_resolution 0.05 --save_dvs_model_state --show_dvs_model_state all \
---vid_orig None --crop '256, 256, 256, 256' --dvs_exposure duration 0.05 --input_frame_rate $input_framerate \
+--vid_orig None --crop '256, 256, 0, 0' --dvs_exposure duration 0.05 --input_frame_rate $input_framerate \
 --pos_thres $event_thr --neg_thres $event_thr --photoreceptor_noise \
---batch_size 8 --output_height 512 --output_width 512 --slomo_stats_plot --cutoff_hz 0.5 \
---dvs_text events_stream_txt --ddd_output
+--batch_size 16 --output_height 1523 --output_width 1523 --slomo_stats_plot --cutoff_hz 0.5 \
+--dvs_text events_stream_txt --ddd_output $folder_out_option --no_preview --unique_output_folder $unique_output_folder_bool
 # Deactivate the virtual environment
 #deactivate
