@@ -47,10 +47,12 @@ echo "Event threshold: $event_thr"
 if [ -z "$output_folder" ]; then
     folder_out_option=""
     unique_output_folder_bool=0
+    overwrite_output_folder_option=""
 else
     folder_out_option="-o $output_folder"
     echo "Output folder: $output_folder"
     unique_output_folder_bool=1
+    overwrite_output_folder_option=--overwrite
 
     # Create the output folder if it does not exist
     mkdir -p $output_folder
@@ -64,7 +66,8 @@ python $v2e_location -i $input_folder \
 --timestamp_resolution 0.05 --save_dvs_model_state --show_dvs_model_state all \
 --vid_orig None --crop '256, 256, 0, 0' --dvs_exposure duration 0.05 --input_frame_rate $input_framerate \
 --pos_thres $event_thr --neg_thres $event_thr --photoreceptor_noise \
---batch_size 16 --output_height 1523 --output_width 1523 --slomo_stats_plot --cutoff_hz 0.5 \
---dvs_text events_stream_txt --ddd_output $folder_out_option --no_preview --unique_output_folder $unique_output_folder_bool
+--batch_size 4 --output_height 1523 --output_width 1523 --slomo_stats_plot --cutoff_hz 0.5 \
+--dvs_text events_stream_txt --ddd_output $folder_out_option --no_preview --unique_output_folder $unique_output_folder_bool $overwrite_output_folder_option 
+
 # Deactivate the virtual environment
 #deactivate
