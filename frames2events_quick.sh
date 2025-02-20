@@ -62,12 +62,17 @@ fi
 #--auto_timestamp_resolution
 #--timestamp_resolution 0.05
 # --dvs_exposure count 1000
-python $v2e_location -i $input_folder \
---timestamp_resolution 0.01 --save_dvs_model_state --show_dvs_model_state all \
---vid_orig None --crop '256, 256, 0, 0' --dvs_exposure duration 0.1 --input_frame_rate $input_framerate \
---pos_thres $event_thr --neg_thres $event_thr --photoreceptor_noise \
---batch_size 4 --output_height 1536 --output_width 1536 --slomo_stats_plot --cutoff_hz 0.35 \
---dvs_text events_stream_txt --ddd_output $folder_out_option --no_preview $overwrite_output_folder_option 
+#python $v2e_location -i $input_folder \
+#--timestamp_resolution 0.0001 \--save_dvs_model_state --show_dvs_model_state all \
+#--vid_orig None --crop '256, 256, 0, 0' --dvs_exposure duration 0.001 --input_frame_rate #$input_framerate \
+#--pos_thres $event_thr --neg_thres $event_thr --photoreceptor_noise \
+#--batch_size 8 --output_height 1024 --output_width 1024 --slomo_stats_plot --cutoff_hz 1 \
+#--dvs_text events_stream_txt --ddd_output $folder_out_option --no_preview #$overwrite_output_folder_option 
 
+python $v2e_location -i $input_folder --save_dvs_model_state --show_dvs_model_state all \
+--vid_orig None --crop '0, 0, 0, 0' --dvs_exposure duration 1.5 --input_frame_rate $input_framerate --no_preview \
+--pos_thres $event_thr --neg_thres $event_thr --photoreceptor_noise \
+--dvs_text events_stream_txt --ddd_output $folder_out_option $overwrite_output_folder_option \
+--batch_size 4 --output_height 1024 --output_width 1024 --slomo_stats_plot --cutoff_hz 0.05
 # Deactivate the virtual environment
 #deactivate

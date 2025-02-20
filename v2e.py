@@ -9,6 +9,8 @@ frames from the original video frames.
 """
 # todo refractory period for pixel
 
+# TODO review code, comment, and dissection!
+
 import glob
 import argparse
 import importlib
