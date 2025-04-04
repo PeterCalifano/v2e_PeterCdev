@@ -165,7 +165,7 @@ fi
 overwrite_output_folder_option="" # Never overwrite output folder
 if ! [ -n "$output_folder" ]; then
     # Compose output folder name with default pattern
-    output_folder=$(basename $input_folder)"_"$framerate_input"fps_"$event_thr"thr_"$res_w"x"$res_h"_v2e_out"
+    output_folder=$(basename $input_folder)"_"$event_thr"thr_"$res_w"x"$res_h"_v2e_out"
     output_folder=${output_folder// /_}
     output_folder=${output_folder//./p} 
     output_folder=${output_folder//:/_} 
@@ -208,5 +208,5 @@ python "$v2e_location" -i $input_folder \
         --output_folder $output_folder $overwrite_output_folder_option \
         --batch_size $batch_size_slomo \
         --slomo_stats_plot \
-        --ignore-gooey \
         $video_args $cut_off_frequency $output_resolution_args
+        #--ignore-gooey 
