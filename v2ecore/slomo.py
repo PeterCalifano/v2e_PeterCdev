@@ -46,12 +46,12 @@ class SuperSloMo(object):
             model: str,
             auto_upsample: bool,
             upsampling_factor: object,
-            batch_size=1,
-            video_path=None,
-            vid_orig='original.avi',
-            vid_slomo='slomo.avi',
-            preview=False,
-            avi_frame_rate=30):
+            vid_orig: str | None = 'original_video.avi',
+            batch_size: int = 1,
+            video_path: str | None = None,
+            vid_slomo: str | None = 'slomo_video.avi',
+            preview: bool | None = False,
+            avi_frame_rate: int = 30):
         """
         init
 
