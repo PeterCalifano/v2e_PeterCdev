@@ -4,12 +4,12 @@
 # export QT_QPA_PLATFORM=offscreen
 
 function usage() {
-    echo -e "Usage: $0 required args [optional args] \nValid arguments: \n -i|--input_folder input_folder -f|--framerate_input input_framerate \n [-o|--output output_folder] \n [-t|--threshold event_threshold] \n [-r|--resolution_output width,height] \n [-c|--cut_off frequency] \n [-d|--deviation_thr sigma_threshold] \n [-b|--batch_size batch_size] \n"
+    echo -e "Usage: $0 required args [optional args] \nValid arguments: \n -i|--input_folder input_folder -f|--framerate_input input_framerate \n [-o|--output output_folder] \n [-t|--threshold event_threshold] \n [-r|--resolution_output width,height] \n [-c|--cut_off frequency] \n [-d|--deviation_thr sigma_threshold] \n [-b|--batch_size batch_size] \n [-g|--grid_time_resolution timestamp_resolution] \n [-a|--auto_timestamp] \n [-s|--show_video] \n"
     exit 1
 }
 
 # Parse options using getopt for short and long options
-TEMP=$(getopt -o a,i:,f:,o:,t:,b:,r:,c:,h,s --long input_folder:,framerate_input:,output_folder:,threshold:,batch_size:,resolution_output:,cut_off:,deviation_thr:,help,show_video -n "$0" -- "$@")
+TEMP=$(getopt -o a,i:,f:,o:,t:,b:,r:,c:,d:,g:,h,s --long input_folder:,framerate_input:,output_folder:,threshold:,batch_size:,resolution_output:,cut_off:,deviation_thr:,grid_time_resolution:,auto_timestamp,help,show_video -n "$0" -- "$@")
 if [ $? != 0 ]; then
     usage
 fi
@@ -62,6 +62,10 @@ while true; do
             ;;
         -h|--help)
             usage
+            ;;
+        --from_slomo_output)
+            from_slomo_output=true
+            shift
             ;;
         --)
             shift
@@ -122,7 +126,6 @@ if [ -z "$v2e_location" ]; then
     exit 1
 fi
 
-
 ### PRINT INFO
 echo "Sourcing virtual environment in: $DIR"
 cd "$DIR"
@@ -130,6 +133,10 @@ source .venvEventBased/bin/activate
 cd "$current_dir"
 
 echo "Input folder path: $input_folder"
+
+from_slomo_output=${from_slomo_output:-false}
+echo "From_slomo_output: $from_slomo_output"
+
 echo "Input framerate: $framerate_input" fps
 echo "Event threshold: $event_thr"
 echo "Batch size: $batch_size_slomo"
@@ -141,7 +148,6 @@ else
     output_resolution_args=""
     echo "Output resolution: native"
 fi
-
 
 echo "Sigma threshold: $sigma_thr"
 if [ -n "$timestamp_resolution" ]; then
@@ -174,12 +180,34 @@ fi
 echo "Output folder: $output_folder"
 mkdir -p "$output_folder"
 
+# If processing is from slomo output, set the input folder variable to point to a file named "video_slomo.avi" or "slomo.avi"
+if [ "$from_slomo_output" = true ]; then
+    input_folder=$(dirname "$input_folder")/video_slomo.avi
+    if [ ! -f "$input_folder" ]; then
+        input_folder=$(dirname "$input_folder")/slomo.avi
+    fi
+    echo "Found Slomo output file in input folder: $input_folder"
+    # Disable slomo
+    disable_slomo="--disable_slomo"
+    # Set overwrite to true
+    overwrite_output_folder_option="--overwrite"
+else
+    disable_slomo=""
+fi
+
 # Determine video args based on the presence of the --show_video flag
 if [[ "$@" == *"--show_video"* ]]; then
     video_args="--skip_video_output --show_dvs_model_state all"
 else
     video_args=""
 fi
+
+# Override video args to skip if tmux
+if [ -n "$TMUX" ] && [ -n "$video_args" ]; then
+    video_args=""
+fi
+
+
 
 # Compose the event stream name
 event_stream_=$(basename $input_folder)"_"$framerate_input"fps_"$event_thr"thr_"$res_w"x"$res_h
@@ -207,6 +235,6 @@ python "$v2e_location" -i $input_folder \
         --dvs_text $event_stream_filename \
         --output_folder $output_folder $overwrite_output_folder_option \
         --batch_size $batch_size_slomo \
-        --slomo_stats_plot \
-        $video_args $cut_off_frequency $output_resolution_args
+        $video_args $cut_off_frequency $output_resolution_args $disable_slomo
         #--ignore-gooey 
+        #--slomo_stats_plot
