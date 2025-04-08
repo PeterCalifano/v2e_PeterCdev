@@ -127,10 +127,8 @@ if [ -z "$v2e_location" ]; then
 fi
 
 ### PRINT INFO
-echo "Sourcing virtual environment in: $DIR"
-cd "$DIR"
-source .venvEventBased/bin/activate
-cd "$current_dir"
+conda activate v2e
+echo "Using conda environment: $(conda info --envs | grep '*' | awk '{print $1}')"
 
 echo "Input folder path: $input_folder"
 
@@ -224,7 +222,7 @@ python "$v2e_location" -i $input_folder \
         --save_dvs_model_state \
         --vid_orig None \
         --crop '0, 0, 0, 0' \
-        --dvs_exposure count 2000 \
+        --dvs_exposure area_count 2000 256 \
         --input_frame_rate $framerate_input \
         --auto_timestamp $auto_timestamp $timestamp_resolution \
         --no_preview \
