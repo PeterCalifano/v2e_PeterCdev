@@ -5,6 +5,9 @@
 		},
 		{
 			"path": "../../../../../media/peterc/6426d3ea-1f91-40b7-93ab-7f00d034e5cd/datasets/v2e_datasets"
+		},
+		{
+			"path": "../EventVision_for_SpaceNav"
 		}
 	],
 	"settings": {}
