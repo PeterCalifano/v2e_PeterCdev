@@ -857,6 +857,14 @@ def main():
                     ax2.set_ylabel('Frame interval (ms)')
                     plt.show()
 
+
+                # Clean-up slomo here, no longer used but still retaining memory
+                if slomo is not None:
+                    slomo.cleanup()
+                    
+                    # Delete slomo instance
+                    del slomo
+
                 # array to batch events for rendering to DVS frames
                 events = np.zeros((0, 4), dtype=np.float32) # Array to store events [x,y,t,p]
 
@@ -905,9 +913,6 @@ def main():
     # Clean up
     eventRenderer.cleanup()
     emulator.cleanup()
-
-    if slomo is not None:
-        slomo.cleanup()
 
     if synthetic_input_instance is not None:
         synthetic_input_instance.cleanup()
