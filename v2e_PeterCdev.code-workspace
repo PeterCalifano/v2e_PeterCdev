@@ -11,6 +11,9 @@
 		},
 		{
 			"path": "../../rendering-sw/corto_PeterCdev"
+		},
+		{
+			"path": "../../ML-repos/pyTorchAutoForge"
 		}
 	],
 	"settings": {}
