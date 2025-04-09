@@ -1,1 +1,0 @@
-# TODO bring here all components necessary to generate events from input video/stack of images without anything else (disassembly v2e.py)

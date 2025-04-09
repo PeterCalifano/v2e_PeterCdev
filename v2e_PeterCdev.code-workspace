@@ -8,6 +8,9 @@
 		},
 		{
 			"path": "../EventVision_for_SpaceNav"
+		},
+		{
+			"path": "../../rendering-sw/corto_PeterCdev"
 		}
 	],
 	"settings": {}
