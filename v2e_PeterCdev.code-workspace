@@ -14,6 +14,12 @@
 		},
 		{
 			"path": "../../ML-repos/pyTorchAutoForge"
+		},
+		{
+			"path": "../../ML-repos/Super-SloMo_PeterCdev"
+		},
+		{
+			"path": "../../../../../media/peterc/Main/linux_data/datasets"
 		}
 	],
 	"settings": {}
