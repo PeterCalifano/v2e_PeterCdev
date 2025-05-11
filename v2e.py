@@ -450,6 +450,7 @@ def main():
                 'resolution')
             # time stamp resolution equals to source frame interval
             slomoTimestampResolutionS = srcFrameIntervalS
+            
         elif not auto_timestamp_resolution:
             slowdown_factor = int(
                 np.ceil(srcFrameIntervalS/timestamp_resolution))

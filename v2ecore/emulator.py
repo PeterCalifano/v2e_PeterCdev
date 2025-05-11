@@ -660,7 +660,7 @@ class EventEmulator(object):
                 cv2.cvtColor((img * 255).astype(np.uint8),
                              cv2.COLOR_GRAY2BGR))
 
-    def generate_events(self, new_frame, t_frame):
+    def generate_events(self, new_frame: np.ndarray, t_frame: float) -> np.ndarray | None:
         """Compute events in new frame.
 
         Parameters
@@ -684,7 +684,7 @@ class EventEmulator(object):
 
         # like a DAVIS, write frame into the file if it's HDF5
         if self.frame_h5_dataset is not None:
-            # save frame data
+            # Save frame data
             self.frame_h5_dataset[self.frame_counter] = \
                 new_frame.astype(np.uint8)
 
