@@ -20,6 +20,9 @@
 		},
 		{
 			"path": "../../../../../media/peterc/Main/linux_data/datasets"
+		},
+		{
+			"path": "../../rendering-sw/DatasetGeneratorLib"
 		}
 	],
 	"settings": {}
