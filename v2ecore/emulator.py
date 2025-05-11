@@ -701,7 +701,7 @@ class EventEmulator(object):
         # logger.debug('delta_time={}'.format(delta_time))
 
         if self.log_input and new_frame.dtype != np.float32:
-            v2e_logger.warning('log_frame is True but input frome is not np.float32 datatype')
+            v2e_logger.warning('log_frame is True but input frame is not np.float32 datatype')
 
         # convert into torch tensor
         self.new_frame = torch.tensor(new_frame, dtype=torch.float64,
@@ -714,6 +714,7 @@ class EventEmulator(object):
             # Time constant of the filter is proportional to
             # the intensity value (with offset to deal with DN=0)
             # limit max time constant to ~1/10 of white intensity level
+            # TODO (PC) this function assumes range is [0,255] not necessarily uint8
             inten01 = rescale_intensity_frame(self.new_frame.clone().detach())  # TODO assumes 8 bit
 
         # Apply nonlinear lowpass filter here.
