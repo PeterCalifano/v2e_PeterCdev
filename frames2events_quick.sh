@@ -2,6 +2,7 @@
 # Export if running headless 
 # TODO verify it works
 # export QT_QPA_PLATFORM=offscreen
+set -Eeuo pipefail
 
 function usage() {
     echo -e "Usage: $0 required args [optional args] \nValid arguments: \n -i|--input_folder input_folder -f|--framerate_input input_framerate \n [-o|--output output_folder] \n [-t|--threshold event_threshold] \n [-r|--resolution_output width,height] \n [-c|--cut_off frequency] \n [-d|--deviation_thr sigma_threshold] \n [-b|--batch_size batch_size] \n [-g|--grid_time_resolution timestamp_resolution] \n [-a|--auto_timestamp] \n [-s|--show_video] \n [-l|--last_time last_time_value] \n"
