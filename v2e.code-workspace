@@ -23,6 +23,9 @@
 		},
 		{
 			"path": "../../rendering-sw/DatasetGeneratorLib"
+		},
+		{
+			"path": "../EventDataGenerationLib"
 		}
 	],
 	"settings": {
