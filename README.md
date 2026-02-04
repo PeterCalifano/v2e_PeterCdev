@@ -279,7 +279,7 @@ DVS camera sizes (selecting --dvs346, --dvs640, etc. overrides --output_width an
   --dvs240              Set size for 240x180 DVS (DAVIS240)
   --dvs346              Set size for 346x260 DVS (DAVIS346)
   --dvs640              Set size for 640x480 DVS (DAVIS640)
-  --dvs1024             Set size for 1024x768 DVS (not supported for AEDAT-2.0
+  --dvs1024             Set size for 1024x768 DVS (not supported for AEDAT-2.0)
                         output since there is no jAER DVS1024 camera
 SloMo upsampling (see also "DVS timestamp resolution" group):
   --disable_slomo       Disables slomo interpolation; the output DVS events

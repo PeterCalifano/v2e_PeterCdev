@@ -1,5 +1,6 @@
 #!/bin/bash
 # run various tests
+set -Eeuo pipefail
 
 # print usage
 python v2e.py -h

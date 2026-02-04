@@ -1,0 +1,13 @@
+# List of TODOs
+
+- [ ] Understand what is the major factor determining the generation of events in the v2e pipeline (i.e. timestamp resolution, dvs exposure if duration or number of eventsm etc.)
+
+- [ ] Clarify role of low pass filtering in the v2e pipeline and how it affects the output
+
+- [ ] Convert SLOMO to TensorRT engine to speed up interpolation
+
+- [ ] Decouple v2e pipeline modules to allow more flexibility in the conversion
+
+- [ ] Modify output colors of events to red and blue (looks much nicer)
+
+- [ ] Re-implement parts of the pipeline in C++ to speed up the conversion

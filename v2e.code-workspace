@@ -1,0 +1,29 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../../../../../media/peterc/6426d3ea-1f91-40b7-93ab-7f00d034e5cd/datasets/v2e_datasets"
+		},
+		{
+			"path": "../EventVision_for_SpaceNav"
+		},
+		{
+			"path": "../../rendering-sw/corto_PeterCdev"
+		},
+		{
+			"path": "../../ML-repos/pyTorchAutoForge"
+		},
+		{
+			"path": "../../ML-repos/Super-SloMo_PeterCdev"
+		},
+		{
+			"path": "../../../../../media/peterc/Main/linux_data/datasets"
+		},
+		{
+			"path": "../../rendering-sw/DatasetGeneratorLib"
+		}
+	],
+	"settings": {}
+}

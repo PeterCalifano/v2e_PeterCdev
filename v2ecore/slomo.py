@@ -46,12 +46,12 @@ class SuperSloMo(object):
             model: str,
             auto_upsample: bool,
             upsampling_factor: object,
-            batch_size=1,
-            video_path=None,
-            vid_orig='original.avi',
-            vid_slomo='slomo.avi',
-            preview=False,
-            avi_frame_rate=30):
+            vid_orig: str | None = 'original_video.avi',
+            batch_size: int = 1,
+            video_path: str | None = None,
+            vid_slomo: str | None = 'slomo_video.avi',
+            preview: bool | None = False,
+            avi_frame_rate: int = 30):
         """
         init
 
@@ -222,7 +222,7 @@ class SuperSloMo(object):
         # dict1 = torch.load(self.checkpoint, map_location='cpu')
         # fails intermittently on windows
 
-        dict1 = torch.load(self.checkpoint, map_location=self.device)
+        dict1 = torch.load(self.checkpoint, map_location=self.device, weights_only=False)
         interpolator.load_state_dict(dict1['state_dictAT'])
         flow_estimator.load_state_dict(dict1['state_dictFC'])
 
