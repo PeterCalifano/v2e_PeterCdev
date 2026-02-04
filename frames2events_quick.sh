@@ -2,14 +2,15 @@
 # Export if running headless 
 # TODO verify it works
 # export QT_QPA_PLATFORM=offscreen
+set -Eeuo pipefail
 
 function usage() {
-    echo -e "Usage: $0 required args [optional args] \nValid arguments: \n -i|--input_folder input_folder -f|--framerate_input input_framerate \n [-o|--output output_folder] \n [-t|--threshold event_threshold] \n [-r|--resolution_output width,height] \n [-c|--cut_off frequency] \n [-d|--deviation_thr sigma_threshold] \n [-b|--batch_size batch_size] \n [-g|--grid_time_resolution timestamp_resolution] \n [-a|--auto_timestamp] \n [-s|--show_video] \n"
+    echo -e "Usage: $0 required args [optional args] \nValid arguments: \n -i|--input_folder input_folder -f|--framerate_input input_framerate \n [-o|--output output_folder] \n [-t|--threshold event_threshold] \n [-r|--resolution_output width,height] \n [-c|--cut_off frequency] \n [-d|--deviation_thr sigma_threshold] \n [-b|--batch_size batch_size] \n [-g|--grid_time_resolution timestamp_resolution] \n [-a|--auto_timestamp] \n [-s|--show_video] \n [-l|--last_time last_time_value] \n"
     exit 1
 }
 
 # Parse options using getopt for short and long options
-TEMP=$(getopt -o a,i:,f:,o:,t:,b:,r:,c:,d:,g:,h,s --long input_folder:,framerate_input:,output_folder:,threshold:,batch_size:,resolution_output:,cut_off:,deviation_thr:,grid_time_resolution:,auto_timestamp,help,show_video -n "$0" -- "$@")
+TEMP=$(getopt -o a,i:,f:,o:,t:,b:,r:,c:,d:,g:,h,s,l: --long input_folder:,framerate_input:,output_folder:,threshold:,batch_size:,resolution_output:,cut_off:,deviation_thr:,grid_time_resolution:,auto_timestamp,help,show_video,last_time: -n "$0" -- "$@")
 if [ $? != 0 ]; then
     usage
 fi
@@ -67,6 +68,10 @@ while true; do
             from_slomo_output=true
             shift
             ;;
+        -l|--last_time)
+            last_time="$2"
+            shift 2
+            ;;
         --)
             shift
             break
@@ -91,6 +96,7 @@ batch_size_slomo=${batch_size_slomo:-4}
 sigma_thr=${sigma_thr:-0.02}
 auto_timestamp=${auto_timestamp:-false}
 cut_off_frequency=${cut_off_frequency:-0.5}
+last_time=${last_time:-""}
 
 if ! [[ "$batch_size_slomo" =~ ^[1-9][0-9]*$ ]]; then
     echo "Error: batch_size must be a positive integer."
@@ -200,11 +206,16 @@ else
     video_args=""
 fi
 
+if [ -n "$last_time" ]; then
+    last_time_args="--stop_time $last_time"
+else
+    last_time_args=""
+fi
+
 # Override video args to skip if tmux
 if [ -n "$TMUX" ] && [ -n "$video_args" ]; then
     video_args=""
 fi
-
 
 
 # Compose the event stream name
@@ -222,7 +233,7 @@ python "$v2e_location" -i $input_folder \
         --save_dvs_model_state \
         --vid_orig None \
         --crop '0, 0, 0, 0' \
-        --dvs_exposure area_count 2000 256 \
+        --dvs_exposure duration 0.01 \
         --input_frame_rate $framerate_input \
         --auto_timestamp $auto_timestamp $timestamp_resolution \
         --no_preview \
@@ -233,6 +244,7 @@ python "$v2e_location" -i $input_folder \
         --dvs_text $event_stream_filename \
         --output_folder $output_folder $overwrite_output_folder_option \
         --batch_size $batch_size_slomo \
-        $video_args $cut_off_frequency $output_resolution_args $disable_slomo
+        $video_args $cut_off_frequency $output_resolution_args $disable_slomo \
+        $last_time_args
         #--ignore-gooey 
         #--slomo_stats_plot

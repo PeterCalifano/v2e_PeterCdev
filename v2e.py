@@ -47,6 +47,7 @@ from typing import Optional, Any
 logging.basicConfig()
 root = logging.getLogger()
 LOGGING_LEVEL=logging.INFO
+
 root.setLevel(LOGGING_LEVEL)  # todo move to info for production
 # https://stackoverflow.com/questions/384076/how-can-i-color-python-logging-output/7995762#7995762
 logging.addLevelName(
@@ -233,8 +234,10 @@ def main():
     #          and not base_synthetic_input:
     if (not synthetic_input):
         if not os.path.isfile(input_filepath) and not os.path.isdir(input_filepath):
+
             logger.error('input file {} does not exist'.format(input_filepath))
             v2e_quit(1)
+
         if os.path.isdir(input_filepath):
             if len(os.listdir(input_filepath))==0:
                 logger.error(f'input folder {input_filepath} is empty')
@@ -350,18 +353,19 @@ def main():
                 v2e_quit(1)
 
             input_source = ImageFolderReader(input_filepath, args.input_frame_rate)
-            srcFps = input_source.frame_rate
-            srcNumFrames = input_source.num_frames
+            src_fps = input_source.frame_rate
+            src_num_frames = input_source.num_frames
 
         else:
             input_source = cv2.VideoCapture(input_filepath)
-            srcFps = input_source.get(cv2.CAP_PROP_FPS)
-            srcNumFrames = int(input_source.get(cv2.CAP_PROP_FRAME_COUNT))
+            src_fps = input_source.get(cv2.CAP_PROP_FPS)
+            src_num_frames = int(input_source.get(cv2.CAP_PROP_FRAME_COUNT))
             if input_frame_rate is not None:
-                logger.info(f'Input video frame rate {srcFps}Hz is overridden by command line argument --input_frame_rate={args.input_frame_rate}')
-                srcFps = args.input_frame_rate
+                logger.info(f'Input video frame rate {src_fps}Hz is overridden by command line argument --input_frame_rate={args.input_frame_rate}')
+                src_fps = args.input_frame_rate
 
         if input_source is not None:
+
             # Set the output width and height from first image in folder, but only if they were not already set
             set_size = False
 
@@ -408,36 +412,37 @@ def main():
             logger.info(f'Rescaled output size: {output_width} x {output_height}')
 
         # Check frame rate and number of frames
-        if srcFps == 0:
+        if src_fps == 0:
             logger.error(
                 'source {} fps is 0; v2e needs to have a timescale '
                 'for input video'.format(input_filepath))
             v2e_quit()
 
-        if srcNumFrames < 2:
+        if src_num_frames < 2:
             logger.warning(
                 'num frames is less than 2, probably cannot be determined '
                 'from cv2.CAP_PROP_FRAME_COUNT')
 
-        srcTotalDuration = (srcNumFrames-1)/srcFps
-        # the index of the frames, from 0 to srcNumFrames-1
-        start_frame = int(srcNumFrames*(input_start_time/srcTotalDuration)) \
+        srcTotalDuration = (src_num_frames-1)/src_fps
+        # the index of the frames, from 0 to src_num_frames-1
+        start_frame = int(src_num_frames*(input_start_time/srcTotalDuration)) \
             if input_start_time else 0
-        stop_frame = int(srcNumFrames*(input_stop_time/srcTotalDuration)) \
-            if input_stop_time else srcNumFrames-1
+        stop_frame = int(src_num_frames*(input_stop_time/srcTotalDuration)) \
+            if input_stop_time else src_num_frames-1
         srcNumFramesToBeProccessed = stop_frame-start_frame+1
         # the duration to be processed, should subtract 1 frame when
         # calculating duration
-        srcDurationToBeProcessed = (srcNumFramesToBeProccessed-1)/srcFps
+        srcDurationToBeProcessed = (srcNumFramesToBeProccessed-1)/src_fps
 
         # redefining start and end time using the time calculated
         # from the frames, the minimum resolution there is
-        start_time = start_frame/srcFps
-        stop_time = stop_frame/srcFps
+        start_time = start_frame/src_fps
+        stop_time = stop_frame/src_fps
 
-        srcFrameIntervalS = (1./srcFps)/input_slowmotion_factor
+        srcFrameIntervalS = (1./src_fps)/input_slowmotion_factor
 
         slowdown_factor = NO_SLOWDOWN  # start with factor 1 for upsampling
+        
         if disable_slomo:
             logger.warning(
                 'slomo interpolation disabled by command line option; '
@@ -445,6 +450,7 @@ def main():
                 'resolution')
             # time stamp resolution equals to source frame interval
             slomoTimestampResolutionS = srcFrameIntervalS
+            
         elif not auto_timestamp_resolution:
             slowdown_factor = int(
                 np.ceil(srcFrameIntervalS/timestamp_resolution))
@@ -466,9 +472,9 @@ def main():
 
             logger.info(
                 f'--auto_timestamp_resolution is False, '
-                f'srcFps={srcFps}Hz '
+                f'src_fps={src_fps}Hz '
                 f'input_slowmotion_factor={input_slowmotion_factor}, '
-                f'real src FPS={srcFps*input_slowmotion_factor}Hz, '
+                f'real src FPS={src_fps*input_slowmotion_factor}Hz, '
                 f'srcFrameIntervalS={eng(srcFrameIntervalS)}s, '
                 f'timestamp_resolution={eng(timestamp_resolution)}s, '
                 f'so SuperSloMo will use slowdown_factor={slowdown_factor} '
@@ -482,6 +488,7 @@ def main():
                     .format(slomoTimestampResolutionS, timestamp_resolution))
 
             check_lowpass(cutoff_hz, 1/slomoTimestampResolutionS, logger)
+        
         else:  # auto_timestamp_resolution
             if timestamp_resolution is not None:
                 slowdown_factor = int(
@@ -531,8 +538,8 @@ def main():
             '(frame interval {}s),'
             '\nWill convert {} frames {} to {}\n'
             '(From {}s to {}s, duration {}s)'
-            .format(input_filepath, srcNumFrames, eng(srcTotalDuration),
-                    eng(srcFps), eng(input_slowmotion_factor),
+            .format(input_filepath, src_num_frames, eng(srcTotalDuration),
+                    eng(src_fps), eng(input_slowmotion_factor),
                     eng(srcFrameIntervalS),
                     stop_frame-start_frame+1, start_frame, stop_frame,
                     start_time, stop_time, (stop_time-start_time)))
@@ -542,8 +549,8 @@ def main():
                 dvsFps*srcDurationToBeProcessed/input_slowmotion_factor)
             dvsDuration = dvsNumFrames/dvsFps
             dvsPlaybackDuration = dvsNumFrames/avi_frame_rate
-            start_time = start_frame/srcFps
-            stop_time = stop_frame/srcFps  # todo something replicated here, already have start and stop times
+            start_time = start_frame/src_fps
+            stop_time = stop_frame/src_fps  # todo something replicated here, already have start and stop times
 
             logger.info('v2e DVS video will have constant-duration frames \n'
                         'at {}fps (accumulation time {}s), '
@@ -554,7 +561,7 @@ def main():
                                 eng(dvsPlaybackDuration)))
         elif exposure_mode==ExposureMode.SOURCE:
             logger.info(f'v2e DVS video will have constant-duration frames \n'
-                        f'at the source video {eng(srcFps)} fps (accumulation time {eng(srcFrameIntervalS)}s)')
+                        f'at the source video {eng(src_fps)} fps (accumulation time {eng(srcFrameIntervalS)}s)')
         else:
             logger.info(
                 'v2e DVS video will have constant-count '
@@ -857,6 +864,14 @@ def main():
                     ax2.set_ylabel('Frame interval (ms)')
                     plt.show()
 
+
+                # Clean-up slomo here, no longer used but still retaining memory
+                if slomo is not None:
+                    slomo.cleanup()
+                    
+                    # Delete slomo instance
+                    del slomo
+
                 # array to batch events for rendering to DVS frames
                 events = np.zeros((0, 4), dtype=np.float32) # Array to store events [x,y,t,p]
 
@@ -905,9 +920,6 @@ def main():
     # Clean up
     eventRenderer.cleanup()
     emulator.cleanup()
-
-    if slomo is not None:
-        slomo.cleanup()
 
     if synthetic_input_instance is not None:
         synthetic_input_instance.cleanup()
