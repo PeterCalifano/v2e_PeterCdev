@@ -105,6 +105,21 @@ Download the [tennis.mov](https://drive.google.com/file/d/1dNUXJGlpEM51UVYH4-ZIn
 video and put in the _input_ folder
 to run the example below.
 
+## Developer notes
+
+- Core architecture and optimization notes:
+  [`docs/development_core.md`](docs/development_core.md)
+- Event-model math to code map (`#CORE` tags):
+  [`docs/core_model_mapping.md`](docs/core_model_mapping.md)
+- Core module overview:
+  [`v2ecore/README.md`](v2ecore/README.md)
+- Fast sanity tests:
+  `pytest -q`
+- Timing/profiling helpers:
+  `python scripts/benchmark_emulator.py`
+  and
+  `python scripts/benchmark_v2e_cli.py`
+
 ## Usage
 
 _v2e_ serves multiple purposes. Please read to code if you would like to adapt it for your own application. Here, we only introduce the usage for generating DVS events from conventional video and from specific datasets.

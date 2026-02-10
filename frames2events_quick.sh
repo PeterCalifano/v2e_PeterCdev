@@ -251,7 +251,7 @@ python "$v2e_location" -i $input_folder \
         --crop '0, 0, 0, 0' \
         --dvs_exposure duration 0.01 \
         --input_frame_rate $framerate_input \
-        --auto_timestamp $auto_timestamp $timestamp_resolution \
+        --auto_timestamp_resolution $auto_timestamp $timestamp_resolution \
         --no_preview \
         --pos_thres $event_thr \
         --neg_thres $event_thr \
