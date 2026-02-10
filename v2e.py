@@ -621,9 +621,21 @@ def main():
         area_dimension=area_dimension,
         avi_frame_rate=args.avi_frame_rate)
 
+    def flush_event_batch(
+            event_chunks: list[np.ndarray]) -> np.ndarray | None:
+        """Concatenate buffered event chunks once and clear the buffer."""
+        if len(event_chunks) == 0:
+            return None
+        if len(event_chunks) == 1:
+            batched_events = event_chunks[0]
+        else:
+            batched_events = np.concatenate(event_chunks, axis=0)
+        event_chunks.clear()
+        return batched_events
+
     if synthetic_input_next_frame_method is not None:
-        # array to batch events for rendering to DVS frames
-        events = np.zeros((0, 4), dtype=np.float32)
+        # buffer chunks and concatenate once at flush to avoid O(n^2) np.append growth
+        event_chunks: list[np.ndarray] = []
         (fr, fr_time) = synthetic_input_instance.next_frame()
         num_frames+=1
         i = 0
@@ -636,19 +648,20 @@ def main():
                     i += 1
                     if newEvents is not None and newEvents.shape[0] > 0 \
                             and not args.skip_video_output:
-                        events = np.append(events, newEvents, axis=0)
-                        events = np.array(events)
+                        event_chunks.append(newEvents)
                         if i % batch_size == 0:
+                            batched_events = flush_event_batch(event_chunks)
                             eventRenderer.render_events_to_frames(
-                                events, height=output_height,
+                                batched_events, height=output_height,
                                 width=output_width)
-                            events = np.zeros((0, 4), dtype=np.float32)
                     (fr, fr_time) = synthetic_input_instance.next_frame()
                     num_frames+=1
             # process leftover events
-            if len(events) > 0 and not args.skip_video_output:
+            batched_events = flush_event_batch(event_chunks)
+            if batched_events is not None and not args.skip_video_output:
                 eventRenderer.render_events_to_frames(
-                    events, height=output_height, width=output_width)
+                    batched_events, height=output_height,
+                    width=output_width)
     else:  
         # video file folder or (avi/mp4) file input
         # timestamps of DVS start at zero and end with
@@ -872,8 +885,8 @@ def main():
                     # Delete slomo instance
                     del slomo
 
-                # array to batch events for rendering to DVS frames
-                events = np.zeros((0, 4), dtype=np.float32) # Array to store events [x,y,t,p]
+                # Buffer chunks and concatenate only when flushed.
+                event_chunks: list[np.ndarray] = []
 
                 logger.info(
                     f'*** Stage 3/3: emulating DVS events from '
@@ -899,23 +912,22 @@ def main():
 
 
                             if newEvents is not None and newEvents.shape[0] > 0 and not args.skip_video_output:
-
-                                # Append new events to the batch if any (dynamically allocated)
-                                events = np.append(events, newEvents, axis=0)
-                                events = np.array(events)
+                                event_chunks.append(newEvents)
                                 
                                 if i % batch_size == 0:
+                                    batched_events = flush_event_batch(
+                                        event_chunks)
                                     # Render events to frames if batch size is reached
                                     eventRenderer.render_events_to_frames(
-                                        events, height=output_height,
+                                        batched_events, height=output_height,
                                         width=output_width)
-                                    # Reset events batch # DEVNOTE this means that events are only saved in correspondence of specific frames
-                                    events = np.zeros((0, 4), dtype=np.float32)
 
                     # Process leftover events
-                    if len(events) > 0 and not args.skip_video_output:
+                    batched_events = flush_event_batch(event_chunks)
+                    if batched_events is not None and not args.skip_video_output:
                         eventRenderer.render_events_to_frames(
-                            events, height=output_height, width=output_width)
+                            batched_events, height=output_height,
+                            width=output_width)
 
     # Clean up
     eventRenderer.cleanup()
