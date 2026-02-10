@@ -2,7 +2,7 @@
 
 Python torch + opencv code to go from conventional stroboscopic video frames with low frame rate into realistic synthetic DVS event streams with much higher effective timing precision. v2e includes finite intensity-depenedent photoreceptor bandwidth, Gaussian pixel to pixel event threshold variation, and noise 'leak' events.
 
-See the [v2e home page](https://sites.google.com/view/video2events/home) for videos and further information. 
+See the [v2e home page](https://sites.google.com/view/video2events/home) for videos and further information.
 
 Our paper (below) about _v2e_ **debunks incorrect assertions about event cameras that pervade the current computer vision literature.**
 
@@ -19,33 +19,40 @@ v2e development was supported by the Swiss National Competence Center for Roboti
 See [changelog](https://github.com/SensorsINI/v2e/blob/master/CHANGELOG.md) for latest news
 
 ## Contact
-Yuhuang Hu (yuhuang.hu@ini.uzh.ch)
-Tobi Delbruck (tobi@ini.uzh.ch)
+
+Yuhuang Hu (<yuhuang.hu@ini.uzh.ch>)
+Tobi Delbruck (<tobi@ini.uzh.ch>)
 
 ### Citation
+
 If you use v2e, we appreciate a citation to the paper below. See the [v2e home page](https://sites.google.com/view/video2events/home) for futher background papers.
 
-+ Y. Hu, S-C. Liu, and T. Delbruck. v2e: From Video Frames to Realistic DVS Events. In _2021 IEEE/CVF  Conference  on  Computer  Vision  and  Pattern Recognition Workshops (CVPRW)_, URL: https://arxiv.org/abs/2006.07722, 2021
++ Y. Hu, S-C. Liu, and T. Delbruck. v2e: From Video Frames to Realistic DVS Events. In _2021 IEEE/CVF  Conference  on  Computer  Vision  and  Pattern Recognition Workshops (CVPRW)_, URL: <https://arxiv.org/abs/2006.07722>, 2021
 
 To reproduce the experiments of the paper, please find [this repository](https://github.com/SensorsINI/v2e_exps_public).
 
 ### Advice about conversion time
-We recommend running _v2e_ on a CUDA GPU or it will be very slow, particularly when using SuperSloMo upsampling. 
-Even with a low-end GTX-1050, _v2e_ runs about 50-200X slower than real time 
+
+We recommend running _v2e_ on a CUDA GPU or it will be very slow, particularly when using SuperSloMo upsampling.
+Even with a low-end GTX-1050, _v2e_ runs about 50-200X slower than real time
 using 10X slowdown factor and 346x260 video.
 
 Conversion speed depends linearly on the reciprocal of the desired DVS timestamp resolution.
-If you demand fine resolution of e.g. 100us, 
+If you demand fine resolution of e.g. 100us,
 then expect many minutes of computing per second of source video. Running on Google colab
 with GPU, it took 500s per second of 12FPS source video, because of the very high upsampling ratio
 of over 800X and the 220k frames that needed to be produced for DVS modeling.
 
 We advise using the _--stop_ option for trial run before starting a long conversion.
+
 ## Using v2e in Google CoLab
+
 If you don't want to install, try [opening v2e in google colab](https://colab.research.google.com/drive/1czx-GJnx-UkhFVBbfoACLVZs8cYlcr_M?usp=sharing).
 
 ## Local Installation
+
 There are 3 general steps
+
 1. Make a _conda_ environment
 2. Install _pytoch_ and other _conda_ distributed packages to this environment
 3. Install the rest of the packages and _v2e_ to the conda enviroment with _pip_.
@@ -53,6 +60,7 @@ There are 3 general steps
 _pip_ is needed because some packages are not availble from the conda repositories. It is important to go in this order because _conda_ in general is not aware of _pip_ installs.
 
 ### Make conda environment
+
 Install _v2e_ to a separate Python environment
 such as `conda` environment:
 
@@ -60,18 +68,23 @@ such as `conda` environment:
 conda create -n v2e python=3.10  # create a new environment
 conda activate v2e  # activate the environment
 ```
+
 ### Ensure you have CUDA enabled GPU-accelerated _pytorch_
-See https://pytorch.org/get-started/locally/ to generate the correct
+
+See <https://pytorch.org/get-started/locally/> to generate the correct
 conda install command to enable GPU-accelerated CUDA. On windows 10, for example, this tool generated the following command. _v2e_ does not use _torchaudio_ so you can leave it out.
+
 ```
 conda install pytorch torchvision torchaudio cudatoolkit=11.3 -c pytorch
 ```
 
 You may want to check this stackoverflow question:
-https://stackoverflow.com/questions/57238344/i-have-a-gpu-and-cuda-installed-in-windows-10-but-pytorchs-torch-cuda-is-availa
+<https://stackoverflow.com/questions/57238344/i-have-a-gpu-and-cuda-installed-in-windows-10-but-pytorchs-torch-cuda-is-availa>
 
 ### Use pip to install rest of packages and v2e
-After installing pytorch to your CUDA environment, to install v2e in developer mode (so your edits to source take effect immediately), run the following command in your terminal inside the activated conda environment. The `python -m pip install -e .` command uses _pyproject.toml_ metadata to install required packages and adds the _v2e_ command-line entry point to the _conda_ environment python path; see https://stackoverflow.com/questions/39023758/what-does-pip-install-dot-mean:
+
+After installing pytorch to your CUDA environment, to install v2e in developer mode (so your edits to source take effect immediately), run the following command in your terminal inside the activated conda environment. The `python -m pip install -e .` command uses _pyproject.toml_ metadata to install required packages and adds the _v2e_ command-line entry point to the _conda_ environment python path; see <https://stackoverflow.com/questions/39023758/what-does-pip-install-dot-mean>:
+
 ```bash
 conda activate v2e # activate your env with pytoch already installed by conda
 git clone https://github.com/SensorsINI/v2e
@@ -80,12 +93,14 @@ python -m pip install -e . # use pip editable install (pyproject.toml) so edits 
 ```
 
 + If you want an additional Windows GUI interface, you will need to install [Gooey](https://github.com/chriskiehl/Gooey) package. This package works the best on Windows:
+
     ```bash
     pip install Gooey
     ```
+
     On Linux, `Gooey` can be hard to install.
 
-    For a sample of conversion using the gooey GUI, see https://youtu.be/THJqRC_q2kY
+    For a sample of conversion using the gooey GUI, see <https://youtu.be/THJqRC_q2kY>
 
 ### Download SuperSloMo model
 
@@ -93,12 +108,13 @@ We use the excellent [Super SloMo](https://people.cs.umass.edu/~hzjiang/projects
 However, since APS frames only record light intensity, we  retrained it on grayscale images.
 
 Download our pre-trained model checkpoint from Google Drive
-[SuperSloMo39.ckpt](https://drive.google.com/file/d/1ETID_4xqLpRBrRo1aOT7Yphs3QqWR_fx/view?usp=sharing) (151 MB) and save it to the _input_ folder. 
+[SuperSloMo39.ckpt](https://drive.google.com/file/d/1ETID_4xqLpRBrRo1aOT7Yphs3QqWR_fx/view?usp=sharing) (151 MB) and save it to the _input_ folder.
 The default value of --slomo_model argument is set to this location.
 
 Special thanks to Zhe He for recovering the checkpoint file.
 
 ### Download sample input data
+
 The sample input videos to try _v2e_ with are in [v2e-sample-input-data](https://drive.google.com/drive/folders/1oWxTB9sMPp6UylAdxg5O1ko_GaIXz7wo?usp=sharing) on google drive.
 
 Download the [tennis.mov](https://drive.google.com/file/d/1dNUXJGlpEM51UVYH4-ZInN9pf0bHGgT_/view?usp=sharing)
@@ -107,15 +123,15 @@ to run the example below.
 
 ## Developer notes
 
-- Core architecture and optimization notes:
++ Core architecture and optimization notes:
   [`docs/development_core.md`](docs/development_core.md)
-- Event-model math to code map (`#CORE` tags):
++ Event-model math to code map (`#KEY` tags):
   [`docs/core_model_mapping.md`](docs/core_model_mapping.md)
-- Core module overview:
++ Core module overview:
   [`v2ecore/README.md`](v2ecore/README.md)
-- Fast sanity tests:
++ Fast sanity tests:
   `pytest -q`
-- Timing/profiling helpers:
++ Timing/profiling helpers:
   `python scripts/benchmark_emulator.py`
   and
   `python scripts/benchmark_v2e_cli.py`
@@ -124,7 +140,7 @@ to run the example below.
 
 _v2e_ serves multiple purposes. Please read to code if you would like to adapt it for your own application. Here, we only introduce the usage for generating DVS events from conventional video and from specific datasets.
 
-## Render emulated DVS events from conventional video.
+## Render emulated DVS events from conventional video
 
 _v2e.py_ reads a standard video (e.g. in .avi, .mp4, .mov, or .wmv), or a folder of images, and generates emulated DVS events at upsampled timestamp resolution.
 
@@ -374,13 +390,13 @@ Synthetic input:
 Output: DVS video:
   --dvs_exposure DVS_EXPOSURE [DVS_EXPOSURE ...]
                         Mode to finish DVS frame event integration:
-                        	duration time: Use fixed accumulation time in seconds, e.g. 
-                        		--dvs_exposure duration .005; 
-                        	count n: Count n events per frame,e.g.
-                        		--dvs_exposure count 5000;
-                        	area_count M N: frame ends when any area of N x N pixels fills with M events, e.g.
-                        		-dvs_exposure area_count 500 64
-                        	source: each DVS frame is from one source frame (slomo or original, depending on if slomo is used)
+                         duration time: Use fixed accumulation time in seconds, e.g. 
+                          --dvs_exposure duration .005; 
+                         count n: Count n events per frame,e.g.
+                          --dvs_exposure count 5000;
+                         area_count M N: frame ends when any area of N x N pixels fills with M events, e.g.
+                          -dvs_exposure area_count 500 64
+                         source: each DVS frame is from one source frame (slomo or original, depending on if slomo is used)
   --dvs_vid DVS_VID     Output DVS events as AVI video at frame_rate. To
                         suppress, supply empty argument or 'None'.
   --dvs_vid_full_scale DVS_VID_FULL_SCALE
@@ -431,12 +447,15 @@ SCIDVS pixel:
                         adapatation and high gain
 Run with no --input to open file dialog
 ```
+
 You can put [tennis.mov](https://drive.google.com/file/d/1dNUXJGlpEM51UVYH4-ZInN9pf0bHGgT_/view?usp=sharing) in the _input_ folder to try it out with the command line below.  Or leave out all options and just use the file chooser to select the movie.
 
 From root of v2e, run the following
+
 ```
 python v2e.py -i input/tennis.mov --overwrite --timestamp_resolution=.003 --auto_timestamp_resolution=False --dvs_exposure duration 0.005 --output_folder=output/tennis --overwrite --pos_thres=.15 --neg_thres=.15 --sigma_thres=0.03 --dvs_aedat2 tennis.aedat --output_width=346 --output_height=260 --stop_time=3 --cutoff_hz=15 
 ```
+
 Run the command above, and the following files will be created in a folder called _output/tennis_.
 
 ```
@@ -448,66 +467,72 @@ video_orig.avi
 video_slomo.avi
 ```
 
-* _dvs-video.avi_: DVS video (with playback rate 30Hz) but with frame rate (DVS timestamp resolution) set by source video frame rate times slowdown_factor.
-* _dvs-video-frame_times.txt_: The times of the DVS frames. Useful when _--dvs_exposure count_ or _--dvs_exposure area-count_ methods are used.
-* _tennis.aedat_: AEDAT-2.0 file for playback and algorithm experiments in [jAER](https://jaerproject.net) (use the AEChip _Davis346Blue_ to play this file.)
-* _v2e-args.txt_: All the parameters and logging output from the run.
-* _video_orig.avi_: input video, but converted to luma and resized to output (width,height) and with repeated frames to allow comparison to _slomo.avi_.
-* _video_slomo.avi_: slow motion video (with playback rate 30Hz) but slowed down by slowdown_factor.
++ _dvs-video.avi_: DVS video (with playback rate 30Hz) but with frame rate (DVS timestamp resolution) set by source video frame rate times slowdown_factor.
++ _dvs-video-frame_times.txt_: The times of the DVS frames. Useful when _--dvs_exposure count_ or _--dvs_exposure area-count_ methods are used.
++ _tennis.aedat_: AEDAT-2.0 file for playback and algorithm experiments in [jAER](https://jaerproject.net) (use the AEChip _Davis346Blue_ to play this file.)
++ _v2e-args.txt_: All the parameters and logging output from the run.
++ _video_orig.avi_: input video, but converted to luma and resized to output (width,height) and with repeated frames to allow comparison to _slomo.avi_.
++ _video_slomo.avi_: slow motion video (with playback rate 30Hz) but slowed down by slowdown_factor.
 
 The [v2e site](https://sites.google.com/view/video2events/home) shows these videos.
+
 ## Scripting v2e
+
 See the [scripts folder](https://github.com/SensorsINI/v2e/blob/master/scripts)  for various samples of shell and cmd scripts to run v2e from terminal.
 
 ### Synthetic input
 
-There are also samples in the [scripts folder](https://github.com/SensorsINI/v2e/blob/master/scripts) of 
+There are also samples in the [scripts folder](https://github.com/SensorsINI/v2e/blob/master/scripts) of
 python modules to generate synthetic input to v2e, e.g. [particles.py](https://github.com/SensorsINI/v2e/blob/master/scripts/particles.py)
 
 You can specify particles as the class that generates input frames to generate DVS events from using the command line option
+
 ````shell
 v2e --synthetic_input scripts.particles ...
 ````
+
 You synthetic input class should subclass _base_synthetic_class.py_. You should override the constructor and the _next_frame()_ method.
 
-  * See [base_synthetic_input.py](https://github.com/SensorsINI/v2e/blob/master/scripts/base_synthetic_input.py) for more information.
-  * You can pass command line arguments into your class; see [particles.py](https://github.com/SensorsINI/v2e/blob/master/scripts/particles.py) for example.
++ See [base_synthetic_input.py](https://github.com/SensorsINI/v2e/blob/master/scripts/base_synthetic_input.py) for more information.
++ You can pass command line arguments into your class; see [particles.py](https://github.com/SensorsINI/v2e/blob/master/scripts/particles.py) for example.
 
 ## Model parameters
 
-The DVS ON and OFF threshold nominal values are set by _pos_thres_ and _neg_thres_. The pixel to pixel variation is set by _sigma_thres_. The pixel cutoff frequency in Hz is set by _cutoff_hz_. The leak event rate is set by _leak_rate_hz_. 
+The DVS ON and OFF threshold nominal values are set by _pos_thres_ and _neg_thres_. The pixel to pixel variation is set by _sigma_thres_. The pixel cutoff frequency in Hz is set by _cutoff_hz_. The leak event rate is set by _leak_rate_hz_.
 
 The _-dvs_params_ argument sets reasonable DVS model parameters for high and low light conditions.
 
 See our technical paper for futher information about these parameters.
- 
- ### Automatic vs manual DVS timestamp resolution
+
+### Automatic vs manual DVS timestamp resolution
+
  The output DVS timestamps will be quantized to some value depending on options chosen.
- 
-  *  _--disable_slomo_ will disable slomo interpolation and the DVS events will have exactly the times of the input video, perhaps modified by --input_slowmotion_factor
-  *  _--timestamp_resolution=X_ will upsample as needed to obtain this desired timestamp resolution _X_ in seconds. If auto_timestamp_resolution is set, then timestamp_resolution will still set the minimum timestamp resolution, i.e. if automatic timestamping would result in 5ms timestamps but timestamp_resolution is 1ms, then 1ms will still be the timestamp resolution.
-  *  _--auto_timestamp_resolution_ will upsample in each _--batch_size_ frames using the computed optical flow to limit motion per frame to at most 1 pixel. In this case, turning on _--slomo_stats_plot_ will generate a plot like the following, which came from a driving video where the car sped up during part of the video:
- 
+
++ _--disable_slomo_ will disable slomo interpolation and the DVS events will have exactly the times of the input video, perhaps modified by --input_slowmotion_factor
++ _--timestamp_resolution=X_ will upsample as needed to obtain this desired timestamp resolution _X_ in seconds. If auto_timestamp_resolution is set, then timestamp_resolution will still set the minimum timestamp resolution, i.e. if automatic timestamping would result in 5ms timestamps but timestamp_resolution is 1ms, then 1ms will still be the timestamp resolution.
++ _--auto_timestamp_resolution_ will upsample in each _--batch_size_ frames using the computed optical flow to limit motion per frame to at most 1 pixel. In this case, turning on _--slomo_stats_plot_ will generate a plot like the following, which came from a driving video where the car sped up during part of the video:
+
  ![auto_slomo_stats](media/slomo_stats.png)
- 
+
  This plot shows the actual timestamps of the interpolated frames (in orange) and the frame intervals for each batch of frames (in blue).
- 
+
 ### Photoreceptor lowpass filtering
-_v2e_ includes an intensity-dependent 1st-order lowpass filtering of light intensity; see the paper for details. 
+
+_v2e_ includes an intensity-dependent 1st-order lowpass filtering of light intensity; see the paper for details.
 If you set a nonzero --cutofffreq_hz, then it is important that the sample rate be high enough to allow the IIR lowpass filters to update properly, i.e.
 the time constant tau of the lowpass filters must be at least 3 times larger than the frame interval.
 Check the console output for warnings about undersampling for lowpass filtering.
 
+### Frame rate and DVS timestamp resolution in v2e
 
- 
- ### Frame rate and DVS timestamp resolution in v2e
 There are several different 'frame rates' in v2e. On opening the input video, v2e reads the frame rate of the video and assumes the video is shot in real time, except that you can specify a _--input_slowmotion_factor_ slowdown_factor if the video is already a slow-motion video. The desired DVS timestamp resolution is combined with the source frame rate to compute the slow-motion upsampling factor. The output DVS AVI video is then generated using a _--dvs-exposure_ method.
 
- * _--avi_frame_rate_: Just sets the frame rate for playback of output AVI files
- * _--dvs-exposure_: See next section
- * _--input_slowmotion_factor_: Specifies by what factor the input video is slowed down.
- 
++ _--avi_frame_rate_: Just sets the frame rate for playback of output AVI files
++ _--dvs-exposure_: See next section
++ _--input_slowmotion_factor_: Specifies by what factor the input video is slowed down.
+
 ### Effect of multiple events per (sub) frame
+
 Anytime a source (or upsampled source) video generates more than 1 event per frame, these events need to be distributed over the time between frames. v2e arbitrarily stacks them as shown in the example below, resulting in pyramids of events and periodic overall bursts of events at each frame.  I.e. v2e first computes the maximum number of events by any pixel, then it subdivides the interframe interval by this number, then it puts all pixels with 1 event at the frame, then pixels with 2 events have thier events placed at the first sub-interval and so on. The reduce this effect, use a smaller timestamp resolution.
 
  ![v2e_pyramid](media/v2e-pyr.gif)
@@ -516,27 +541,28 @@ Anytime a source (or upsampled source) video generates more than 1 event per fra
 
 The DVS allows arbritrary frame rates. _v2e_ provides 3 methods to 'expose' DVS video frames, which are selected by the
 --dvs_exposure argument:
+
  1. **Constant-Duration**: _--dvs_exposure _duration_ _T__:  - Each frame has constant duration _T_.
- 2. **Constant-Count**: _--dvs_exposure_count_ _N_:  - each frame has the same number _N_ of DVS events, as first described in Delbruck, Tobi. 2008. “Frame-Free Dynamic Digital Vision.” In Proceedings of Intl. Symp. on Secure-Life Electronics, Advanced Electronics for Quality Life and Society, 1:21–26. Tokyo, Japan: Tokyo. https://drive.google.com/open?id=0BzvXOhBHjRheTS1rSVlZN0l2MDg..
- 3. **Area-Event**: _--dvs_exposure_ _area_event_ _N_ _M_:  - frames are accumulated until any block of *M*x*M* pixels fills up with _N_ events, as first described in Liu, Min, and T. Delbruck. 2018. “Adaptive Time-Slice Block-Matching Optical Flow Algorithm for Dynamic Vision Sensors.” In Proceedings of British Machine Vision Conference (BMVC 2018). Newcastle upon Tyne, UK: Proceedings of BMVC 2018. https://doi.org/10.5167/uzh-168589.
+ 2. **Constant-Count**: _--dvs_exposure_count_ _N_:  - each frame has the same number _N_ of DVS events, as first described in Delbruck, Tobi. 2008. “Frame-Free Dynamic Digital Vision.” In Proceedings of Intl. Symp. on Secure-Life Electronics, Advanced Electronics for Quality Life and Society, 1:21–26. Tokyo, Japan: Tokyo. <https://drive.google.com/open?id=0BzvXOhBHjRheTS1rSVlZN0l2MDg>..
+ 3. **Area-Event**: _--dvs_exposure_ _area_event_ _N_ _M_:  - frames are accumulated until any block of *M*x*M* pixels fills up with _N_ events, as first described in Liu, Min, and T. Delbruck. 2018. “Adaptive Time-Slice Block-Matching Optical Flow Algorithm for Dynamic Vision Sensors.” In Proceedings of British Machine Vision Conference (BMVC 2018). Newcastle upon Tyne, UK: Proceedings of BMVC 2018. <https://doi.org/10.5167/uzh-168589>.
  4. **Source**: _--dvs_exposure source_: DVS timestamps are based on source video timestamps. Extra events per frame are spaced between frames accoruding to the maximum number of events for that frame.
 
- - _Constant-Duration_ is like normal video, i.e. sampled at regular, ideally Nyquist rate. 
- - _Constant-Count_ frames have the same number of pixel brightness change events per frame. But if the scene is very textured (i.e. busy) then frame can get very brief, while parts of the input with only a small object moving can have very long frames.
- - _Area-Event_ compensates for this effect to some extent by concluding exposure when any block of pixels fills with a constant count.
++ _Constant-Duration_ is like normal video, i.e. sampled at regular, ideally Nyquist rate.
++ _Constant-Count_ frames have the same number of pixel brightness change events per frame. But if the scene is very textured (i.e. busy) then frame can get very brief, while parts of the input with only a small object moving can have very long frames.
++ _Area-Event_ compensates for this effect to some extent by concluding exposure when any block of pixels fills with a constant count.
 
 ## DAVIS camera conversion Dataset
 
 v2e can convert recordings from
- [DDD20](https://sites.google.com/view/davis-driving-dataset-2020/home) and the original [DDD17](https://docs.google.com/document/d/1HM0CSmjO8nOpUeTvmPjopcBcVCk7KXvLUuiZFS6TWSg/pub) 
-which are the first public end-to-end training datasets 
-of automotive driving using a DAVIS event + frame camera. It lets you compare the real DVS data with the conversion. 
-This dataset is maintained by the Sensors Research Group of Institute of Neuroinformatics. 
+ [DDD20](https://sites.google.com/view/davis-driving-dataset-2020/home) and the original [DDD17](https://docs.google.com/document/d/1HM0CSmjO8nOpUeTvmPjopcBcVCk7KXvLUuiZFS6TWSg/pub)
+which are the first public end-to-end training datasets
+of automotive driving using a DAVIS event + frame camera. It lets you compare the real DVS data with the conversion.
+This dataset is maintained by the Sensors Research Group of Institute of Neuroinformatics.
 
 For your convenience, we offer via google drive one recording from _DDD20_ (our newer DDD dataset) of 800s of
-Los Angeles street driving. 
+Los Angeles street driving.
 The file is _aug04/rec1501902136.hdf5_ [[link]](https://drive.google.com/open?id=1KIaHsn72ZpVBZR6SGeFcd2lILyZoD2-5)
-  in Google Drive for you to try it with v2e (***Warning:*** 2GB 7z compressed, 5.4 GB uncompressed).
+  in Google Drive for you to try it with v2e (_**Warning:**_ 2GB 7z compressed, 5.4 GB uncompressed).
 
 ```bash
 mkdir -p input
@@ -575,7 +601,6 @@ Run with no --input to open file dialog
 ```
 
 You can then synthesize events from the DDD APS video .avi file that is produced and compare with the real events extracted to the AEDAT-2.0 file that is also extracted.
-
 
 ## Working with jAER DAVIS recordings
 

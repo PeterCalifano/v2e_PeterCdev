@@ -32,7 +32,7 @@ def lin_log(x, threshold=20):
 
     f = (1./threshold) * math.log(threshold)
 
-    #CORE[D-LINLOG]: Fig. 5D in Hu et al. 2021 (v2e paper): piecewise
+    #KEY[D-LINLOG]: Fig. 5D in Hu et al. 2021 (v2e paper): piecewise
     # lin-log mapping from luma Y to log-domain brightness L.
     y = torch.where(x <= threshold, x*f, torch.log(x))
 
@@ -79,14 +79,14 @@ def low_pass_filter(
         return log_new_frame
 
     # else low pass
-    #CORE[E-LPF-TAU]: Fig. 5E / Sec. 4 ("Finite intensity-dependent
+    #KEY[E-LPF-TAU]: Fig. 5E / Sec. 4 ("Finite intensity-dependent
     # photoreceptor bandwidth"): tau from cutoff.
     tau = 1/(math.pi*2*cutoff_hz)
 
     # make the update proportional to the local intensity
     # the more intensity, the shorter the time constant
     if inten01 is not None:
-        #CORE[E-LPF-EPS]: intensity-dependent update strength epsilon scales
+        #KEY[E-LPF-EPS]: intensity-dependent update strength epsilon scales
         # the filter bandwidth with brightness.
         eps = inten01*(delta_time/tau)
         max_eps = torch.max(eps)
@@ -103,7 +103,7 @@ def low_pass_filter(
         eps=delta_time/tau
 
     # first internal state is updated
-    #CORE[E-LPF-IIR]: first-order IIR update for filtered log intensity Llp.
+    #KEY[E-LPF-IIR]: first-order IIR update for filtered log intensity Llp.
     new_lp_log_frame = (1-eps)*lp_log_frame+eps*log_new_frame
 
     # then 2nd internal state (output) is updated from first
@@ -130,11 +130,11 @@ def subtract_leak_current(base_log_frame,
         noise_rate_array.shape, dtype=torch.float32,
         device=noise_rate_array.device)
 
-    #CORE[F-LEAK-RATE]: Sec. 4(F) leak model with per-pixel randomization.
+    #KEY[F-LEAK-RATE]: Sec. 4(F) leak model with per-pixel randomization.
     curr_leak_rate = \
         leak_rate_hz*noise_rate_array*(1-leak_jitter_fraction*rand)
 
-    #CORE[F-LEAK-LMEM]: Lmem continuously decreases to create spontaneous ON
+    #KEY[F-LEAK-LMEM]: Lmem continuously decreases to create spontaneous ON
     # leak events.
     delta_leak = delta_time*curr_leak_rate*pos_thres  # this is a matrix
 
@@ -161,7 +161,7 @@ def compute_event_map(diff_frame, pos_thres, neg_thres):
     neg_frame = F.relu(-diff_frame)
 
     # compute quantized number of ON and OFF events for each pixel
-    #CORE[F-EVENT-QUANT]: Fig. 5F / Sec. 4 event generation:
+    #KEY[F-EVENT-QUANT]: Fig. 5F / Sec. 4 event generation:
     # DeltaL -> integer event count via threshold quantization.
     pos_evts_frame = torch.div(
         pos_frame, pos_thres, rounding_mode="floor").type(torch.int32)
@@ -220,7 +220,7 @@ def compute_photoreceptor_noise_voltage(shot_noise_rate_hz, f3db, sample_rate_hz
         # x = log10(Rn/f3db)
         # see the plot Fig. 3 from Graca, Rui, and Tobi Delbruck. 2021. “Unraveling the Paradox of Intensity-Dependent DVS Pixel Noise.” arXiv [eess.SY]. arXiv. http://arxiv.org/abs/2109.08640.
         # the fit is computed in media/noise_event_rate_simulation.xlsx spreadsheet
-        #CORE[G-PHOTO-VRMS-FIT]: fitted relation from Graca & Delbruck 2021
+        #KEY[G-PHOTO-VRMS-FIT]: fitted relation from Graca & Delbruck 2021
         # used to map target noise-rate-per-bandwidth to RMS noise voltage.
         y = -0.0026 * x ** 3 - 0.036 * x ** 2 - 0.1949 * x + 0.321
         thr_per_vn = 10 ** y  # to get thr/vn
@@ -337,7 +337,7 @@ def generate_shot_noise(
     # multiplying by the delta time of this frame,
     # and multiplying by the intensity factor
     # division by num_iter is correct if generate_shot_noise is called outside the iteration loop, unless num_iter=1 for calling outside loop
-    #CORE[G-SHOT-PROB]: Sec. 4(G) temporal noise model (Poisson-style per
+    #KEY[G-SHOT-PROB]: Sec. 4(G) temporal noise model (Poisson-style per
     # sample probabilities scaled by delta time and brightness).
     shot_noise_factor = (
         (shot_noise_rate_hz/2)*delta_time) * \
@@ -347,7 +347,7 @@ def generate_shot_noise(
     # dt*rate*nom_thres/actual_thres.
     # That way, the smaller the threshold,
     # the larger the rate
-    #CORE[G-SHOT-THRESH]: compare uniform random samples against ON/OFF
+    #KEY[G-SHOT-THRESH]: compare uniform random samples against ON/OFF
     # thresholds to emit temporal noise events.
     one_minus_shot_ON_prob_this_sample = \
         1 - shot_noise_factor*pos_thres_pre_prob # ON shot events are generated when uniform sampled random number from range 0-1 is larger than this; the larger shot_noise_factor, the larger the noise rate

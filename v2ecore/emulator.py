@@ -499,7 +499,7 @@ class EventEmulator(object):
         # base_frame are memorized lin_log pixel values
         self.diff_frame = None
 
-        #CORE[C-THRESH-MISMATCH]: Sec. 4(C) threshold mismatch.
+        #KEY[C-THRESH-MISMATCH]: Sec. 4(C) threshold mismatch.
         # Pixel-wise ON/OFF thresholds are sampled around nominal values.
         # take the variance of threshold into account.
         if self.sigma_thres > 0:
@@ -517,7 +517,7 @@ class EventEmulator(object):
                 dtype=torch.float32).to(self.device)
             self.neg_thres = torch.clamp(self.neg_thres, min=0.01)
 
-        #CORE[G-THRESH-PROB-SCALE]: scale temporal-noise probability by
+        #KEY[G-THRESH-PROB-SCALE]: scale temporal-noise probability by
         # nominal/actual threshold ratio so lower-threshold pixels fire more noise.
         # compute variable for shot-noise
         self.pos_thres_pre_prob = torch.div(
@@ -545,7 +545,7 @@ class EventEmulator(object):
             #      first_frame_linear.shape,
             #      dtype=torch.float32, device=self.device)*self.pos_thres
 
-            #CORE[F-LEAK-FPN]: per-pixel fixed-pattern leak-rate dispersion
+            #KEY[F-LEAK-FPN]: per-pixel fixed-pattern leak-rate dispersion
             # (log-normal multiplicative noise).
             # set noise rate array, it's a log-normal distribution
             self.noise_rate_array = torch.randn(
@@ -702,7 +702,7 @@ class EventEmulator(object):
                 "this frame time={} must be later than "
                 "previous frame time={}".format(t_frame, self.t_previous))
 
-        #CORE[A-DELTA-T]: discrete-time update interval between APS frames.
+        #KEY[A-DELTA-T]: discrete-time update interval between APS frames.
         # compute time difference between this and the previous frame
         delta_time = t_frame - self.t_previous
         # logger.debug('delta_time={}'.format(delta_time))
@@ -713,7 +713,7 @@ class EventEmulator(object):
         # convert into torch tensor
         self.new_frame = torch.tensor(new_frame, dtype=torch.float64,
                                       device=self.device)
-        #CORE[D-LINLOG-CALL]: apply Fig. 5D lin-log encoding to luminance.
+        #KEY[D-LINLOG-CALL]: apply Fig. 5D lin-log encoding to luminance.
         # lin-log mapping, if input is not already float32 log input
         self.log_new_frame = lin_log(self.new_frame) if not self.log_input else self.new_frame
 
@@ -723,7 +723,7 @@ class EventEmulator(object):
             # the intensity value (with offset to deal with DN=0)
             # limit max time constant to ~1/10 of white intensity level
             # TODO (PC) this function assumes range is [0,255] not necessarily uint8
-            #CORE[E-INTEN-SCALE]: brightness-dependent scaling factor for
+            #KEY[E-INTEN-SCALE]: brightness-dependent scaling factor for
             # photoreceptor bandwidth/noise models.
             inten01 = rescale_intensity_frame(self.new_frame.clone().detach())  # TODO assumes 8 bit
 
@@ -738,7 +738,7 @@ class EventEmulator(object):
             self.lp_log_frame = self.log_new_frame
             self.photoreceptor_noise_arr = torch.zeros_like(self.lp_log_frame)
 
-        #CORE[E-LPF-CALL]: Fig. 5E finite photoreceptor bandwidth model.
+        #KEY[E-LPF-CALL]: Fig. 5E finite photoreceptor bandwidth model.
         self.lp_log_frame = low_pass_filter(
             log_new_frame=self.log_new_frame,
             lp_log_frame=self.lp_log_frame,
@@ -746,7 +746,7 @@ class EventEmulator(object):
             delta_time=delta_time,
             cutoff_hz=self.cutoff_hz)
 
-        #CORE[G-PHOTO-NOISE-INJECT]: optional temporal-noise path that injects
+        #KEY[G-PHOTO-NOISE-INJECT]: optional temporal-noise path that injects
         # Gaussian photoreceptor noise before thresholding.
         # add photoreceptor noise if we are using photoreceptor noise to create shot noise
         if self.photoreceptor_noise and not self.base_log_frame is None:  # only add noise after the initial values are memorized and we can properly lowpass filter the noise
@@ -789,7 +789,7 @@ class EventEmulator(object):
         # R_l=(dI/dt)/Theta_on, so
         # R_l*Theta_on=dI/dt, so
         # dI=R_l*Theta_on*dt
-        #CORE[F-LEAK-CALL]: Sec. 4(F) leak term subtracts from memory state.
+        #KEY[F-LEAK-CALL]: Sec. 4(F) leak term subtracts from memory state.
         if self.leak_rate_hz > 0:
             self.base_log_frame = subtract_leak_current(
                 base_log_frame=self.base_log_frame,
@@ -806,7 +806,7 @@ class EventEmulator(object):
         # take input from either photoreceptor or amplified high pass nonlinear filtered scidvs
         photoreceptor = EventEmulator.SCIDVS_GAIN * self.scidvs_highpass if self.scidvs else self.lp_log_frame
 
-        #CORE[F-DIFF]: event-driving contrast is DeltaL = L_photo - L_mem.
+        #KEY[F-DIFF]: event-driving contrast is DeltaL = L_photo - L_mem.
         if not self.csdvs_enabled:
             self.diff_frame = photoreceptor + self.photoreceptor_noise_arr - self.base_log_frame
         else:
@@ -828,7 +828,7 @@ class EventEmulator(object):
 
         # generate event map
         # print(f'\ndiff_frame max={torch.max(self.diff_frame)} pos_thres mean={torch.mean(self.pos_thres)} expect {int(torch.max(self.diff_frame)/torch.mean(self.pos_thres))} max events')
-        #CORE[F-EVENT-MAP-CALL]: quantize DeltaL into ON/OFF event counts.
+        #KEY[F-EVENT-MAP-CALL]: quantize DeltaL into ON/OFF event counts.
         pos_evts_frame, neg_evts_frame = compute_event_map(
             self.diff_frame, self.pos_thres, self.neg_thres)
         max_num_events_any_pixel = max(pos_evts_frame.max(),
@@ -850,7 +850,7 @@ class EventEmulator(object):
         # ts=1*1/2, 2*1/2
         #  ts = self.t_previous + delta_time * (i + 1) / min_ts_steps
         # if min_ts_steps==1, then there is only a single timestamp at t_frame
-        #CORE[F-TS-SUBDIV]: assign intermediate timestamps to bursts of
+        #KEY[F-TS-SUBDIV]: assign intermediate timestamps to bursts of
         # multiple same-frame events from the same pixel.
         min_ts_steps=max_num_events_any_pixel if max_num_events_any_pixel>0 else 1
         ts_step = delta_time / min_ts_steps
@@ -891,7 +891,7 @@ class EventEmulator(object):
                 # NOT at the value at the end of the refractory period.
                 # Brian McReynolds thinks that this effect probably only makes a significant difference if the temporal resolution of the signal
                 # is high enough so that dt is less than one refractory period.
-                #CORE[H-REFRACTORY-EXT]: practical refractory gate extension
+                #KEY[H-REFRACTORY-EXT]: practical refractory gate extension
                 # applied after event quantization.
                 if self.refractory_period_s > ts_step:
                     pos_time_since_last_spike = (
@@ -939,18 +939,8 @@ class EventEmulator(object):
 
                 # end of iteration over max_num_events_any_pixel
 
-        # NOISE: add shot temporal noise here by
-        # simple Poisson process that has a base noise rate
-        # self.shot_noise_rate_hz.
-        # If there is such noise event,
-        # then we output event from each such pixel. Note this is too simplified to model
-        # alternating ON/OFF noise; see --photoreceptor_noise option for that type of noise
-        # Advantage here is to be able to label signal and noise events.
-
-        # the shot noise rate varies with intensity:
-        # for lowest intensity the rate rises to parameter.
-        # the noise is reduced by factor
-        # SHOT_NOISE_INTEN_FACTOR for brightest intensities
+        # NOISE: add shot temporal noise here by simple Poisson process that has a base noise rate
+        # self.shot_noise_rate_hz. If there is such noise event, then we output event from each such pixel. Note this is too simplified to model alternating ON/OFF noise; see --photoreceptor_noise option for that type of noise. Advantage here is to be able to label signal and noise events. the shot noise rate varies with intensity: for lowest intensity the rate rises to parameter. the noise is reduced by factor SHOT_NOISE_INTEN_FACTOR for brightest intensities
 
         shot_on_cord, shot_off_cord = None, None
 
@@ -963,14 +953,14 @@ class EventEmulator(object):
         ) if self.label_signal_noise else None  # all signal so far
 
         # This was in the loop, here we calculate loop-independent quantities
-        #CORE[G-SHOT-CALL]: simplified Poisson-like temporal shot-noise model.
+        #KEY[G-SHOT-CALL]: simplified Poisson-like temporal shot-noise model.
         if self.shot_noise_rate_hz > 0 and not self.photoreceptor_noise:
-            # generate all the noise events for this entire input frame; there could be (but unlikely) several per pixel but only 1 on or off event is returned here
+            # Generate all the noise events for this entire input frame; there could be (but unlikely) several per pixel but only 1 on or off event is returned here
             shot_on_cord, shot_off_cord = generate_shot_noise(
                 shot_noise_rate_hz=self.shot_noise_rate_hz,
                 delta_time=delta_time,
                 shot_noise_inten_factor=self.SHOT_NOISE_INTEN_FACTOR,
-                inten01=inten01,
+                inten01=inten01, # TODO check what inten01 is
                 pos_thres_pre_prob=self.pos_thres_pre_prob,
                 neg_thres_pre_prob=self.neg_thres_pre_prob)
 
@@ -1009,14 +999,14 @@ class EventEmulator(object):
         #  self.base_log_frame += pos_evts_frame*self.pos_thres
         #  self.base_log_frame -= neg_evts_frame*self.neg_thres
 
-        #CORE[F-LMEM-UPDATE]: reset-by-increment memory update after emitted
+        #KEY[F-LMEM-UPDATE]: reset-by-increment memory update after emitted
         # ON/OFF events: L_mem <- L_mem +/- k*theta.
         self.base_log_frame += final_pos_evts_frame * self.pos_thres # TODO should this be self.lp_log_frame ? I.e. output of lowpass photoreceptor?
         self.base_log_frame -= final_neg_evts_frame * self.neg_thres
 
         # however, if we made a shot noise event, then just memorize the log intensity at this point, so that the pixels are reset and forget the log intensity input
         if not self.photoreceptor_noise and self.shot_noise_rate_hz>0:
-            #CORE[G-SHOT-RESET]: simple shot-noise path hard-resets memory at
+            #KEY[G-SHOT-RESET]: simple shot-noise path hard-resets memory at
             # noisy pixels to the current low-pass log intensity.
             self.base_log_frame[shot_on_xy]=self.lp_log_frame[shot_on_xy]
             self.base_log_frame[shot_off_xy]=self.lp_log_frame[shot_off_xy]

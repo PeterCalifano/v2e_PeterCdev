@@ -3,7 +3,7 @@
 This document is aimed at contributors working on v2e internals,
 especially event-generation performance and correctness.
 
-For a paper-aligned math-to-code map of the event model and `#CORE[...]` tags,
+For a paper-aligned math-to-code map of the event model and `#KEY[...]` tags,
 see [`docs/core_model_mapping.md`](core_model_mapping.md).
 
 ## Repository map (core-focused)

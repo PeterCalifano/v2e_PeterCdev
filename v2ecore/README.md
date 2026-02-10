@@ -60,5 +60,5 @@ Developer workflow
 For deeper architecture and optimization guidance, see:
 `docs/development_core.md`.
 
-For paper-to-code mapping of the event model with `#CORE[...]` tags, see:
+For paper-to-code mapping of the event model with `#KEY[...]` tags, see:
 `docs/core_model_mapping.md`.
