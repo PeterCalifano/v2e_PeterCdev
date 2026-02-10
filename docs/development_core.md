@@ -65,6 +65,8 @@ Preferred order:
   `python scripts/benchmark_emulator.py --profile`
 - Short CLI pipeline timing:
   `python scripts/benchmark_v2e_cli.py`
+- Dummy-motion 3D event visualization:
+  `python scripts/plot_events_3d_example.py --scenario moving_blob --save output/events_3d_blob.png --no_show`
 
 Record benchmark parameters when sharing results:
 
