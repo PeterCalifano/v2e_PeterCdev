@@ -3,6 +3,18 @@ import numpy as np
 from v2ecore.emulator import EventEmulator
 
 
+def _assert_event_packet_valid(events: np.ndarray, height: int, width: int) -> None:
+    assert events is not None
+    assert events.ndim == 2
+    assert events.shape[1] == 4
+    assert np.all(np.diff(events[:, 0]) >= 0)
+    assert np.all(events[:, 1] >= 0)
+    assert np.all(events[:, 1] < width)
+    assert np.all(events[:, 2] >= 0)
+    assert np.all(events[:, 2] < height)
+    assert set(np.unique(events[:, 3])).issubset({-1.0, 1.0})
+
+
 def test_generate_events_shape_bounds_and_monotonic_timestamps():
     height, width = 24, 32
     emu = EventEmulator(
@@ -27,15 +39,7 @@ def test_generate_events_shape_bounds_and_monotonic_timestamps():
     events = emu.generate_events(frame_1, 1.0 / 30.0)
     emu.cleanup()
 
-    assert events is not None
-    assert events.ndim == 2
-    assert events.shape[1] == 4
-    assert np.all(np.diff(events[:, 0]) >= 0)
-    assert np.all(events[:, 1] >= 0)
-    assert np.all(events[:, 1] < width)
-    assert np.all(events[:, 2] >= 0)
-    assert np.all(events[:, 2] < height)
-    assert set(np.unique(events[:, 3])).issubset({-1.0, 1.0})
+    _assert_event_packet_valid(events, height=height, width=width)
 
 
 def _run_seeded_sequence(seed: int) -> np.ndarray:
@@ -118,3 +122,72 @@ def test_label_signal_noise_shot_noise_path_writes_label_column(tmp_path):
     ]
     assert len(data_lines) > 0
     assert all(len(line.split()) == 5 for line in data_lines[:20])
+
+
+def test_moving_edge_generates_events_with_valid_packet():
+    height, width = 32, 48
+    emu = EventEmulator(
+        pos_thres=0.15,
+        neg_thres=0.15,
+        sigma_thres=0.0,
+        cutoff_hz=0.0,
+        leak_rate_hz=0.0,
+        shot_noise_rate_hz=0.0,
+        photoreceptor_noise=False,
+        refractory_period_s=0.0,
+        seed=3,
+        output_width=width,
+        output_height=height,
+        device="cpu",
+    )
+
+    # A rolled step edge creates both brightening and darkening transitions.
+    x = np.arange(width, dtype=np.int32)[None, :].repeat(height, axis=0)
+    frame_0 = np.where(x < (width // 2), 255, 0).astype(np.uint8)
+    frame_1 = np.roll(frame_0, shift=4, axis=1)
+
+    assert emu.generate_events(frame_0, 0.0) is None
+    events = emu.generate_events(frame_1, 1.0 / 30.0)
+    emu.cleanup()
+
+    _assert_event_packet_valid(events, height=height, width=width)
+    assert events.shape[0] > 0
+    assert set(np.unique(events[:, 3])) == {-1.0, 1.0}
+
+
+def test_moving_blob_generates_on_and_off_events():
+    height, width = 40, 56
+    emu = EventEmulator(
+        pos_thres=0.12,
+        neg_thres=0.12,
+        sigma_thres=0.0,
+        cutoff_hz=0.0,
+        leak_rate_hz=0.0,
+        shot_noise_rate_hz=0.0,
+        photoreceptor_noise=False,
+        refractory_period_s=0.0,
+        seed=5,
+        output_width=width,
+        output_height=height,
+        device="cpu",
+    )
+
+    frame_0 = np.zeros((height, width), dtype=np.uint8)
+    frame_1 = np.zeros((height, width), dtype=np.uint8)
+    blob_h, blob_w = 10, 12
+    y0 = 12
+    x0 = 8
+    shift = 6
+    frame_0[y0:y0 + blob_h, x0:x0 + blob_w] = 220
+    frame_1[y0:y0 + blob_h, x0 + shift:x0 + shift + blob_w] = 220
+
+    assert emu.generate_events(frame_0, 0.0) is None
+    events = emu.generate_events(frame_1, 1.0 / 40.0)
+    emu.cleanup()
+
+    _assert_event_packet_valid(events, height=height, width=width)
+    assert events.shape[0] > 0
+
+    # Blob translation should create ON events on the leading edge and OFF on trailing edge.
+    pol = set(np.unique(events[:, 3]))
+    assert pol == {-1.0, 1.0}
