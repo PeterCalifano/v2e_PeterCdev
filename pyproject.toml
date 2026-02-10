@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "v2e"
+version = "1.5.1"
+description = "Generates synthetic DVS events from conventional video"
+readme = "README.md"
+requires-python = ">=3.7"
+license = { file = "LICENSE" }
+authors = [
+  { name = "Tobi Delbruck", email = "tobi@ini.uzh.ch" },
+  { name = "Yuhuang Hu", email = "yuhuang.hu@ini.uzh.ch" },
+  { name = "Zhe He" }
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "Natural Language :: English",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3.7",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Topic :: Utilities",
+  "Topic :: Scientific/Engineering",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "License :: OSI Approved :: MIT License"
+]
+dependencies = [
+  "numpy==1.20; python_version<'3.10'",
+  "numpy>=1.24; python_version>='3.10'",
+  "argcomplete",
+  "engineering-notation",
+  "tqdm",
+  "opencv-python",
+  "h5py",
+  "torch",
+  "torchvision",
+  "numba",
+  "matplotlib",
+  "plyer",
+  "screeninfo",
+  "easygui",
+  "scikit-image",
+  "dv_processing"
+]
+
+[project.urls]
+Homepage = "https://github.com/SensorsINI/v2e"
+
+[project.scripts]
+v2e = "v2e:main"
+
+[tool.setuptools]
+py-modules = ["v2e"]
+script-files = ["v2e.py", "dataset_scripts/ddd/ddd_extract_data.py"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["v2ecore*", "dataset_scripts*", "scripts*"]
