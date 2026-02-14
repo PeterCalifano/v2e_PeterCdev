@@ -57,6 +57,7 @@ def rescale_intensity_frame(new_frame):
 
 IIR_MAX_WARNINGS = 10
 
+
 class LowPassFilter:
     """Callable first-order IIR low-pass filter with precomputed time constant."""
 
@@ -65,7 +66,8 @@ class LowPassFilter:
     def __init__(self, cutoff_hz: float = 0.0, tau: float | None = None):
         self.cutoff_hz = float(cutoff_hz)
         if tau is None:
-            self.tau = 1 / (2 * math.pi * self.cutoff_hz) if self.cutoff_hz > 0 else -1.0
+            self.tau = 1 / \
+                (2 * math.pi * self.cutoff_hz) if self.cutoff_hz > 0 else -1.0
         else:
             self.tau = float(tau)
         self.iir_warning_count = 0
@@ -76,15 +78,17 @@ class LowPassFilter:
                  inten01: torch.Tensor | None,
                  delta_time: float,
                  filter_tau_const: float | None = None) -> torch.Tensor:
-        
+
         # Get the time constant tau for the low-pass filter. If cutoff_hz is non-positive, skip filtering.
         if filter_tau_const is not None:
             tau = filter_tau_const
         else:
-            tau = self.tau if self.tau > 0 else (1 / (2 * math.pi * self.cutoff_hz) if self.cutoff_hz > 0 else -1.0)
-        
+            tau = self.tau if self.tau > 0 else (
+                1 / (2 * math.pi * self.cutoff_hz) if self.cutoff_hz > 0 else -1.0)
+
         if tau <= 0:
-            logger.warning(f'cutoff_hz={self.cutoff_hz} is non-positive, skipping low-pass filtering')
+            logger.warning(
+                f'cutoff_hz={self.cutoff_hz} is non-positive, skipping low-pass filtering')
             return log_new_frame
 
         delta_over_tau = delta_time / tau
@@ -102,14 +106,15 @@ class LowPassFilter:
                 logger.warning(
                     f'IIR lowpass filter update has large maximum update eps={max_eps:.2f} from delta_time/tau={delta_time:.3g}/{tau:.3g}')
                 self.iir_warning_count += 1
-                
+
                 if self.iir_warning_count == IIR_MAX_WARNINGS:
                     logger.warning(
                         'Supressing further warnings about inaccurate IIR lowpass filtering; check timestamp resolution and DVS photoreceptor cutoff frequency')
 
             eps = torch.clamp(eps, max=1.0)
         else:
-            eps = torch.tensor(delta_over_tau, dtype=torch.float32, device=log_new_frame.device) if isinstance(delta_over_tau, float) else delta_over_tau
+            eps = torch.tensor(delta_over_tau, dtype=torch.float32, device=log_new_frame.device) if isinstance(
+                delta_over_tau, float) else delta_over_tau
 
         # KEY[E-LPF-IIR]: first-order IIR update for filtered log intensity Llp.
         return lp_log_frame + eps * (log_new_frame - lp_log_frame)
@@ -119,12 +124,12 @@ _LOW_PASS_FILTER_CACHE: dict[tuple[float, float | None], LowPassFilter] = {}
 
 
 def apply_low_pass_filter(log_new_frame,
-                    lp_log_frame,
-                    inten01,
-                    delta_time,
-                    cutoff_hz=0,
+                          lp_log_frame,
+                          inten01,
+                          delta_time,
+                          cutoff_hz=0,
                           filter_tau_const: float | None = None,
-                    low_pass_filter: LowPassFilter | None = None):
+                          low_pass_filter: LowPassFilter | None = None):
     """Compute intensity-dependent low-pass filter.
 
     # Arguments
@@ -141,11 +146,13 @@ def apply_low_pass_filter(log_new_frame,
     """
     if low_pass_filter is None:
 
-        cache_key = (float(cutoff_hz), None if filter_tau_const is None else float(filter_tau_const))
+        cache_key = (float(cutoff_hz), None if filter_tau_const is None else float(
+            filter_tau_const))
         low_pass_filter = _LOW_PASS_FILTER_CACHE.get(cache_key)
-        
+
         if low_pass_filter is None:
-            low_pass_filter = LowPassFilter(cutoff_hz=cutoff_hz, tau=filter_tau_const)
+            low_pass_filter = LowPassFilter(
+                cutoff_hz=cutoff_hz, tau=filter_tau_const)
             _LOW_PASS_FILTER_CACHE[cache_key] = low_pass_filter
 
     return low_pass_filter(
@@ -193,15 +200,16 @@ def compute_event_map(diff_frame, pos_thres, neg_thres):
     Returns:
         pos_evts_frame, neg_evts_frame;  2d Tensors of integer ON and OFF event counts
     """
-    # extract positive and negative differences
+    # Extract positive and negative differences
     pos_frame = F.relu(diff_frame)
     neg_frame = F.relu(-diff_frame)
 
-    # compute quantized number of ON and OFF events for each pixel
+    # Compute quantized number of ON and OFF events for each pixel
     # KEY[F-EVENT-QUANT]: Fig. 5F / Sec. 4 event generation:
-    # DeltaL -> integer event count via threshold quantization.
+    # DeltaL -> integer event count via threshold quantization (elem-wise division with floor rounding).
     pos_evts_frame = torch.div(
         pos_frame, pos_thres, rounding_mode="floor").type(torch.int32)
+
     neg_evts_frame = torch.div(
         neg_frame, neg_thres, rounding_mode="floor").type(torch.int32)
 
@@ -355,13 +363,12 @@ compute_photoreceptor_noise_voltage.last_sample_rate = None
 compute_photoreceptor_noise_voltage.last_vn = None
 
 
-def generate_shot_noise(
-        shot_noise_rate_hz,
-        delta_time,
-        shot_noise_inten_factor,
-        inten01,
-        pos_thres_pre_prob,
-        neg_thres_pre_prob):
+def generate_shot_noise(shot_noise_rate_hz,
+                        delta_time,
+                        shot_noise_inten_factor,
+                        inten01,
+                        pos_thres_pre_prob,
+                        neg_thres_pre_prob):
     """Generate shot noise.
     :param shot_noise_rate_hz: the rate per pixel in hz
     :param delta_time: the delta time for this frame in seconds
@@ -388,7 +395,7 @@ def generate_shot_noise(
     # KEY[G-SHOT-PROB]: Sec. 4(G) temporal noise model (Poisson-style per
     # sample probabilities scaled by delta time and brightness).
     shot_noise_factor = (
-        (shot_noise_rate_hz/2)*delta_time) * \
+        (0.5 * shot_noise_rate_hz) * delta_time) * \
         ((shot_noise_inten_factor-1)*inten01+1)  # =1 for inten=0 and SHOT_NOISE_INTEN_FACTOR for inten=1 # TODO check this logic again, the shot noise rate should increase with intensity but factor is negative here
 
     # probability for each pixel is
@@ -411,6 +418,7 @@ def generate_shot_noise(
     # precompute all the shot noise cords, gets binary array size of chip
     shot_on_cord = torch.gt(
         rand01, one_minus_shot_ON_prob_this_sample)
+    
     shot_off_cord = torch.lt(
         rand01, shot_OFF_prob_this_sample)
 
@@ -472,7 +480,7 @@ def generate_shot_noise(
 
 
 if __name__ == "__main__":
-
+    # DEVNOTE what is this?
     temp_input = torch.randint(0, 256, (1280, 720), dtype=torch.float32).cuda()
 
     for i in range(1000):
