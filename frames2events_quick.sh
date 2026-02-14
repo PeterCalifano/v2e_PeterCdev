@@ -5,18 +5,19 @@
 set -Eeo pipefail
 
 function usage() {
-    echo -e "Usage: $0 required args [optional args] \nValid arguments: \n -i|--input_folder input_folder -f|--framerate_input input_framerate \n [-o|--output output_folder] \n [-t|--threshold event_threshold] \n [-r|--resolution_output width,height] \n [-c|--cut_off frequency] \n [-d|--deviation_thr sigma_threshold] \n [-b|--batch_size batch_size] \n [-g|--grid_time_resolution timestamp_resolution] \n [-a|--auto_timestamp] \n [-s|--show_video] \n [--disable_slomo] \n [-l|--last_time last_time_value] \n"
+    echo -e "Usage: $0 required args [optional args] \nValid arguments: \n -i|--input_folder input_folder -f|--framerate_input input_framerate \n [-o|--output output_folder] \n [-t|--threshold event_threshold] \n [-r|--resolution_output width,height] \n [--dvxplorer] \n [-c|--cut_off frequency] \n [-d|--deviation_thr sigma_threshold] \n [-b|--batch_size batch_size] \n [-g|--grid_time_resolution timestamp_resolution] \n [-a|--auto_timestamp] \n [-s|--show_video] \n [--disable_slomo] \n [-l|--last_time last_time_value] \n"
     exit 1
 }
 
 # Parse options using getopt for short and long options
-TEMP=$(getopt -o a,i:,f:,o:,t:,b:,r:,c:,d:,g:,h,s,l: --long input_folder:,framerate_input:,output_folder:,threshold:,batch_size:,resolution_output:,cut_off:,deviation_thr:,grid_time_resolution:,auto_timestamp,help,show_video,disable_slomo,last_time: -n "$0" -- "$@")
+TEMP=$(getopt -o a,i:,f:,o:,t:,b:,r:,c:,d:,g:,h,s,l: --long input_folder:,framerate_input:,output_folder:,threshold:,batch_size:,resolution_output:,cut_off:,deviation_thr:,grid_time_resolution:,auto_timestamp,help,show_video,disable_slomo,last_time:,dvxplorer -n "$0" -- "$@")
 if [ $? != 0 ]; then
     usage
 fi
 
 disable_slomo_flag=false
 output_resolution=""
+use_dvxplorer=true
 
 eval set -- "$TEMP"
 while true; do
@@ -55,7 +56,12 @@ while true; do
             ;;
         -r|--resolution_output)
             output_resolution="$2"
+            use_dvxplorer=false
             shift 2
+            ;;
+        --dvxplorer)
+            use_dvxplorer=true
+            shift 1
             ;;
         -c|--cut_off)   
             cut_off_frequency="$2"
@@ -122,8 +128,8 @@ if [ -n "$output_resolution" ]; then
         exit 1
     fi
 else
-    res_w=256
-    res_h=256
+    res_w=640
+    res_h=480
 fi
 
 # Get the directory of this script
@@ -167,8 +173,13 @@ if [ -n "$output_resolution" ]; then
     output_resolution_args="--output_width $res_w --output_height $res_h"
     echo "Output resolution: ${res_w}x${res_h}" pixels
 else
-    output_resolution_args=""
-    echo "Output resolution: native"
+    if [ "$use_dvxplorer" = true ]; then
+        output_resolution_args="--dvxplorer"
+        echo "Output resolution preset: DVXplorer (640x480)"
+    else
+        output_resolution_args=""
+        echo "Output resolution: native"
+    fi
 fi
 
 echo "Sigma threshold: $sigma_thr"
@@ -252,7 +263,6 @@ python "$v2e_location" -i $input_folder \
         --dvs_exposure duration 0.01 \
         --input_frame_rate $framerate_input \
         --auto_timestamp_resolution $auto_timestamp $timestamp_resolution \
-        --no_preview \
         --pos_thres $event_thr \
         --neg_thres $event_thr \
         --sigma_thres $sigma_thr \
@@ -262,5 +272,5 @@ python "$v2e_location" -i $input_folder \
         --batch_size $batch_size_slomo \
         $video_args $cut_off_frequency $output_resolution_args $disable_slomo \
         $last_time_args
-        #--ignore-gooey 
+        #--ignore-gooey
         #--slomo_stats_plot

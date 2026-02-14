@@ -173,7 +173,7 @@ def main():
     output_width, output_height = set_output_dimension(
         args.output_width, args.output_height,
         args.dvs128, args.dvs240, args.dvs346,
-        args.dvs640, args.dvs1024,
+        args.dvs640, args.dvs1024, args.dvxplorer,
         logger)
 
     # Visualization
@@ -323,6 +323,9 @@ def main():
     dvs_h5 = args.dvs_h5
     dvs_aedat2 = args.dvs_aedat2
     dvs_aedat4 = args.dvs_aedat4
+    aedat4_camera_name: str | None = args.aedat4_camera_name
+    if args.dvxplorer and aedat4_camera_name is None:
+        aedat4_camera_name = "DVXplorer"
     dvs_text = args.dvs_text
     # signal noise output CSV file
     label_signal_noise = args.label_signal_noise
@@ -405,9 +408,10 @@ def main():
                     'Could not read video frame size from video input and so could not automatically set DVS output size. \nCheck DVS camera sizes arguments.')
 
         # Check output height and width
-        if (output_height > 1024 or output_width > 1024) and not disable_slomo:
+        if output_height > 1024 or output_width > 1024:
             logger.warning(
-                'Output height or width greater than 1024 pixels with SloMo enabled. Rescaling to maintain aspect ratio...')
+                'Output height or width greater than 1024 pixels. '
+                'Rescaling to max 1024 while maintaining aspect ratio...')
 
             # Compute aspect ratio
             aspect_ratio = float(output_width) / float(output_height)
@@ -621,6 +625,7 @@ def main():
         refractory_period_s=args.refractory_period,
         seed=effective_dvs_seed,
         output_folder=output_folder, dvs_h5=dvs_h5, dvs_aedat2=dvs_aedat2, dvs_aedat4 = dvs_aedat4,
+        aedat4_camera_name=aedat4_camera_name,
         dvs_text=dvs_text, show_dvs_model_state=args.show_dvs_model_state,
         save_dvs_model_state=args.save_dvs_model_state,
         output_width=output_width, output_height=output_height,
