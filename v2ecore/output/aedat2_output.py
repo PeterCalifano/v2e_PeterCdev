@@ -83,12 +83,12 @@ class AEDat2Output:
         self.numEventsWritten = 0
         self.numOnEvents=0
         self.numOffEvents=0
-        logging.info('opening AEDAT-2.0 output file {} in binary mode'.format(filepath))
+        logger.debug('opening AEDAT-2.0 output file {} in binary mode'.format(filepath))
         try:
             self.file = open(filepath, 'wb')
             self._writeHeader()
             atexit.register(self.cleanup)
-            logger.info('opened {} for DVS output data for jAER'.format(filepath))
+            logger.debug('opened {} for DVS output data for jAER'.format(filepath))
         except OSError as err:
             logger.error('caught {}:\n  could not open {} for writing; maybe jAER has it open?'.format(err,filepath))
             v2e_quit(1)

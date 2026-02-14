@@ -398,10 +398,9 @@ def main():
             if set_size:
 
                 logger.warning(
-                    f'From input frame automatically set DVS output_width={output_width} and/or output_height={output_height}. '
-                    f'This may not be desired behavior. \nCheck DVS camera sizes arguments.')
-                
-                time.sleep(5)
+                    f'Auto-selected DVS output size from input frame: '
+                    f'{output_width}x{output_height}. '
+                    f'Use camera-size options if this is not desired.')
 
             elif output_height is None or output_width is None:
                 logger.error(
@@ -539,8 +538,7 @@ def main():
 
     if not synthetic_input and not auto_timestamp_resolution:
         logger.info(
-            f'\n events will have timestamp resolution '
-            f'{eng(slomoTimestampResolutionS)}s,')
+            f'Effective event timestamp resolution: {eng(slomoTimestampResolutionS)}s')
         if exposure_mode == ExposureMode.DURATION \
                 and dvsFps > (1 / slomoTimestampResolutionS):
             logger.warning(
@@ -552,11 +550,9 @@ def main():
     # %% PROCESSING
     if not synthetic_input:
         logger.info(
-            'Source video {} has total {} frames with total duration {}s. '
-            '\nSource video is {}fps with slowmotion_factor {} '
-            '(frame interval {}s),'
-            '\nWill convert {} frames {} to {}\n'
-            '(From {}s to {}s, duration {}s)'
+            'Source summary: path="{}", total_frames={}, total_duration={}s, '
+            'src_fps={}Hz, input_slowmotion_factor={}, frame_interval={}s, '
+            'processing_frames={} ({}..{}), time_span={}s..{}s (duration {}s)'
             .format(input_filepath, src_num_frames, eng(srcTotalDuration),
                     eng(src_fps), eng(input_slowmotion_factor),
                     eng(srcFrameIntervalS),
@@ -571,20 +567,17 @@ def main():
             start_time = start_frame/src_fps
             stop_time = stop_frame/src_fps  # todo something replicated here, already have start and stop times
 
-            logger.info('v2e DVS video will have constant-duration frames \n'
-                        'at {}fps (accumulation time {}s), '
-                        '\nDVS video will have {} frames with duration {}s '
-                        'and playback duration {}s\n'
+            logger.info('DVS frame summary: mode=duration, fps={}, accumulation={}s, '
+                        'num_frames={}, dvs_duration={}s, playback_duration={}s'
                         .format(eng(dvsFps), eng(1 / dvsFps),
                                 dvsNumFrames, eng(dvsDuration),
                                 eng(dvsPlaybackDuration)))
         elif exposure_mode==ExposureMode.SOURCE:
-            logger.info(f'v2e DVS video will have constant-duration frames \n'
-                        f'at the source video {eng(src_fps)} fps (accumulation time {eng(srcFrameIntervalS)}s)')
+            logger.info(
+                f'DVS frame summary: mode=source, fps={eng(src_fps)}Hz, accumulation={eng(srcFrameIntervalS)}s')
         else:
             logger.info(
-                'v2e DVS video will have constant-count '
-                'frames with {} events), '
+                'DVS frame summary: mode=count, events_per_frame={}'
                 .format(exposure_val))
 
     # Check one more time that we have an output width and height
@@ -766,11 +759,9 @@ def main():
                 output_width = inputWidth
                 output_height = inputHeight
                 logger.warning(
-                    'output size ({}x{}) was set automatically to '
-                    'input video size\n    Are you sure you want this? '
-                    'It might be slow.\n Consider using\n '
-                    '    --output_width=346 --output_height=260\n '
-                    'to match Davis346.'
+                    'Output size auto-set to input size {}x{}; '
+                    'this may be slow. Consider --output_width=346 --output_height=260 '
+                    'for DAVIS346-like runs.'
                     .format(output_width, output_height))
 
                 # set emulator output width and height for the last time

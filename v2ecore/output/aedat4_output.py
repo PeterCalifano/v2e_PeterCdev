@@ -25,7 +25,7 @@ class AEDat4Output:
         self.numEventsWritten = 0
         self.numOnEvents=0
         self.numOffEvents=0
-        logging.info('opening AEDAT-4.0 output file {} in binary mode'.format(filepath))
+        logger.debug('opening AEDAT-4.0 output file {} in binary mode'.format(filepath))
 
         self.flipy = False 
         self.flipx = False 
