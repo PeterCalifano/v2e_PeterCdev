@@ -15,7 +15,7 @@ import numpy as np
 import torch 
 from screeninfo import get_monitors
 
-from v2ecore.emulator_utils import compute_event_map, compute_photoreceptor_noise_voltage
+from v2ecore.emulator_utils import compute_event_map, PhotoreceptorNoiseVoltageEstimator
 from v2ecore.emulator_utils import generate_shot_noise
 from v2ecore.emulator_utils import lin_log
 from v2ecore.emulator_utils import LowPassFilter
@@ -237,6 +237,8 @@ class EventEmulator(object):
         self.shot_noise_rate_hz = shot_noise_rate_hz
         self.photoreceptor_noise = photoreceptor_noise
         self.photoreceptor_noise_vrms: float | None = None
+        estimator_seed: int | None = seed if seed != 0 else None
+        self.photoreceptor_noise_estimator = PhotoreceptorNoiseVoltageEstimator(seed=estimator_seed)
         self.photoreceptor_noise_arr: np.ndarray | None = None  # separate noise source that is lowpass filtered to provide intensity-independent noise to add to intensity-dependent filtered photoreceptor output
         if photoreceptor_noise:
             if shot_noise_rate_hz == 0:
@@ -754,7 +756,7 @@ class EventEmulator(object):
         # Gaussian photoreceptor noise before thresholding.
         # add photoreceptor noise if we are using photoreceptor noise to create shot noise
         if self.photoreceptor_noise and not self.base_log_frame is None:  # only add noise after the initial values are memorized and we can properly lowpass filter the noise
-            self.photoreceptor_noise_vrms = compute_photoreceptor_noise_voltage(
+            self.photoreceptor_noise_vrms = self.photoreceptor_noise_estimator(
                 shot_noise_rate_hz=self.shot_noise_rate_hz, f3db=self.cutoff_hz, sample_rate_hz=1 / delta_time,
                 pos_thr=self.pos_thres_nominal, neg_thr=self.neg_thres_nominal, sigma_thr=self.sigma_thres)
             noise = self.photoreceptor_noise_vrms * torch.randn(self.log_new_frame.shape, dtype=torch.float32,

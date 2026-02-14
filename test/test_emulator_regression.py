@@ -86,6 +86,52 @@ def test_fixed_seed_reproducible_event_stream():
     assert np.array_equal(stream_a, stream_b)
 
 
+def _run_seeded_photoreceptor_noise_sequence(seed: int) -> np.ndarray:
+    height, width = 16, 16
+    emu = EventEmulator(
+        pos_thres=0.2,
+        neg_thres=0.2,
+        sigma_thres=0.03,
+        cutoff_hz=30.0,
+        leak_rate_hz=0.0,
+        shot_noise_rate_hz=200.0,
+        photoreceptor_noise=True,
+        refractory_period_s=0.0,
+        seed=seed,
+        output_width=width,
+        output_height=height,
+        device="cpu",
+    )
+
+    frame = np.full((height, width), 127, dtype=np.uint8)
+    collected: list[np.ndarray] = []
+    t = 0.0
+    for _ in range(15):
+        events = emu.generate_events(frame, t)
+        if events is not None and events.shape[0] > 0:
+            collected.append(events.copy())
+        t += 1.0 / 120.0
+    emu.cleanup()
+
+    if len(collected) == 0:
+        return np.zeros((0, 4), dtype=np.float32)
+    return np.concatenate(collected, axis=0)
+
+
+def test_photoreceptor_noise_seed_reproducible_event_stream():
+    stream_a = _run_seeded_photoreceptor_noise_sequence(seed=31)
+    stream_b = _run_seeded_photoreceptor_noise_sequence(seed=31)
+    assert np.array_equal(stream_a, stream_b)
+
+
+def test_photoreceptor_noise_different_seeds_produce_different_streams():
+    stream_a = _run_seeded_photoreceptor_noise_sequence(seed=41)
+    stream_b = _run_seeded_photoreceptor_noise_sequence(seed=42)
+    assert stream_a.shape[0] > 0
+    assert stream_b.shape[0] > 0
+    assert not np.array_equal(stream_a, stream_b)
+
+
 def test_label_signal_noise_shot_noise_path_writes_label_column(tmp_path):
     height, width = 12, 16
     text_name = "events-labeled.txt"

@@ -108,6 +108,16 @@ def get_args():
     return (args_namespace,other_args,command_line)
 
 
+def resolve_dvs_emulator_seed(requested_seed: int) -> tuple[int, bool]:
+    """Return effective seed and whether it was auto-generated."""
+    if requested_seed > 0:
+        return requested_seed, False
+    if requested_seed == 0:
+        auto_seed = int(np.random.randint(1, 2**31))
+        return auto_seed, True
+    raise ValueError(f'dvs_emulator_seed must be >=0, got {requested_seed}')
+
+
 def main():
 
     # %% Arguments and options handling
@@ -589,6 +599,18 @@ def main():
     if scidvs:
         logger.info('Simulating SCIDVS pixel')
 
+    try:
+        effective_dvs_seed, auto_seeded = resolve_dvs_emulator_seed(args.dvs_emulator_seed)
+    except ValueError as e:
+        logger.error(str(e))
+        v2e_quit(1)
+        return
+
+    if auto_seeded:
+        logger.info(f'Using DVS emulator seed: {effective_dvs_seed} (auto-generated)')
+    else:
+        logger.info(f'Using DVS emulator seed: {effective_dvs_seed}')
+
     ### Setup DVS emulator
     emulator = EventEmulator(
         pos_thres=pos_thres, neg_thres=neg_thres,
@@ -597,7 +619,7 @@ def main():
         leak_jitter_fraction=args.leak_jitter_fraction,
         noise_rate_cov_decades=args.noise_rate_cov_decades,
         refractory_period_s=args.refractory_period,
-        seed=args.dvs_emulator_seed,
+        seed=effective_dvs_seed,
         output_folder=output_folder, dvs_h5=dvs_h5, dvs_aedat2=dvs_aedat2, dvs_aedat4 = dvs_aedat4,
         dvs_text=dvs_text, show_dvs_model_state=args.show_dvs_model_state,
         save_dvs_model_state=args.save_dvs_model_state,

@@ -280,8 +280,9 @@ DVS model:
                         triggered less than refractory_period ago.Set to 0 to
                         disable this feature.
   --dvs_emulator_seed DVS_EMULATOR_SEED
-                        Set to a integer >0 to use a fixed random seed.default
-                        is 0 which means the random seed is not fixed.
+                        Set to an integer >0 to use a fixed random seed.
+                        Default is 0: v2e auto-generates a random positive
+                        seed each run.
   --show_dvs_model_state SHOW_DVS_MODEL_STATE [SHOW_DVS_MODEL_STATE ...]
                         One or more space separated list model states. Do not
                         use '='. E.g. '--show_dvs_model_state all'. Possible

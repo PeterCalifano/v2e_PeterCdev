@@ -276,3 +276,74 @@ def test_aedat4_writer_flushes_each_append_call(monkeypatch: pytest.MonkeyPatch)
     assert len(writer.writer.written_batches[0]) == 2
     assert len(writer.writer.written_batches[1]) == 1
     writer.close()
+
+
+def test_resolve_dvs_emulator_seed_uses_explicit_seed():
+    v2e_module = _Import_local_v2e_module()
+    effective_seed, auto_generated = v2e_module.resolve_dvs_emulator_seed(1234)
+    assert effective_seed == 1234
+    assert auto_generated is False
+
+
+def test_resolve_dvs_emulator_seed_auto_generates_when_zero(monkeypatch: pytest.MonkeyPatch):
+    v2e_module = _Import_local_v2e_module()
+    generated = iter([111, 222])
+    monkeypatch.setattr(
+        v2e_module.np.random, "randint", lambda _low, _high: next(generated))
+
+    first_seed, first_auto = v2e_module.resolve_dvs_emulator_seed(0)
+    second_seed, second_auto = v2e_module.resolve_dvs_emulator_seed(0)
+
+    assert first_auto is True
+    assert second_auto is True
+    assert first_seed == 111
+    assert second_seed == 222
+    assert first_seed != second_seed
+
+
+def test_main_logs_and_passes_auto_generated_seed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture):
+    v2e_module = _Import_local_v2e_module()
+
+    class StopAfterSeed(RuntimeError):
+        pass
+
+    captured_seed: dict[str, int] = {}
+
+    class FakeEventEmulator:
+        def __init__(self, *args, **kwargs):
+            captured_seed["value"] = kwargs["seed"]
+            raise StopAfterSeed("seed captured")
+
+    input_folder = tmp_path / "input_frames_seed_test"
+    input_folder.mkdir()
+    _Write_test_image(input_folder / "00000000.png", pixel_value=10)
+    _Write_test_image(input_folder / "00000001.png", pixel_value=20)
+
+    output_folder = tmp_path / "output_seed_test"
+    args = _Build_v2e_args([
+        "--input", str(input_folder),
+        "--input_frame_rate", "30",
+        "--output_folder", str(output_folder),
+        "--unique_output_folder", "false",
+        "--overwrite",
+        "--disable_slomo",
+        "--skip_video_output",
+        "--no_preview",
+        "--output_width", "6",
+        "--output_height", "6",
+        "--dvs_emulator_seed", "0",
+    ])
+
+    monkeypatch.setattr(v2e_module.np.random, "randint", lambda _low, _high: 54321)
+    monkeypatch.setattr(v2e_module, "EventEmulator", FakeEventEmulator)
+    monkeypatch.setattr(v2e_module, "Gooey", lambda *args, **kwargs: (lambda: None), raising=False)
+    monkeypatch.setattr(v2e_module, "get_args", lambda: (args, [], "v2e test"))
+    monkeypatch.setattr(v2e_module, "inputVideoFileDialog", lambda: str(input_folder))
+    monkeypatch.setattr(v2e_module.desktop, "open", lambda *_args, **_kwargs: None)
+
+    with caplog.at_level(logging.INFO):
+        with pytest.raises(StopAfterSeed):
+            v2e_module.main()
+
+    assert captured_seed["value"] == 54321
+    assert "Using DVS emulator seed: 54321 (auto-generated)" in caplog.text

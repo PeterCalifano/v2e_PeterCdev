@@ -231,36 +231,47 @@ def compute_event_map(diff_frame, pos_thres, neg_thres):
     #  return pos_evts_cord_post, neg_evts_cord_post, max_events
 
 
-def compute_photoreceptor_noise_voltage(shot_noise_rate_hz, f3db, sample_rate_hz, pos_thr, neg_thr, sigma_thr) -> float:
-    """
-     Computes the necessary photoreceptor noise voltage to result in observed shot noise rate at low light intensity.
-     This computation relies on the known f3dB photoreceptor lowpass filter cutoff frequency and the known (nominal) event threshold.
-     emulator.py injects Gaussian distributed noise to the photoreceptor that should in principle generate the desired shot noise events.
+class PhotoreceptorNoiseVoltageEstimator:
+    """Compute and cache photoreceptor noise RMS needed for a target shot-noise rate."""
 
-     See the file media/noise_event_rate_simulation.xlsx for the simulation data and curve fit.
+    __slots__ = (
+        "_rng",
+        "_last_args",
+        "_last_vn",
+        "_vrms_computation_printed",
+        "_computation_count",
+        "sample_rate_rel_tolerance",
+        "value_rel_tolerance",
+        "value_abs_tolerance",
+        "num_threshold_samples",
+    )
 
-    Parameters
-    -----------
-     shot_noise_rate_hz: float
-        the desired pixel shot noise rate in hz
-     f3db: float
-        the 1st-order IIR RC lowpass filter cutoff frequency in Hz
-     sample_rate_hz: float
-        the sample rate (up-sampled frame rate) before IIR lowpassing the noise
-     pos_thr:float
-        on threshold in ln units
-     neg_thr:float
-        off threshold in ln units. The on and off thresholds are averaged to obtain a single threshold.
-     sigma_thr: float
-        the std deviations of the thresholds
+    def __init__(
+            self,
+            seed: int | None = None,
+            sample_rate_rel_tolerance: float = 0.1,
+            value_rel_tolerance: float = 1e-6,
+            value_abs_tolerance: float = 1e-12,
+            num_threshold_samples: int = 300):
+        self._rng = np.random.default_rng(seed)
+        self._last_args: tuple[float, float, float, float, float, float] | None = None
+        self._last_vn: float | None = None
+        self._vrms_computation_printed = False
+        self._computation_count = 0
+        self.sample_rate_rel_tolerance = float(sample_rate_rel_tolerance)
+        self.value_rel_tolerance = float(value_rel_tolerance)
+        self.value_abs_tolerance = float(value_abs_tolerance)
+        self.num_threshold_samples = int(num_threshold_samples)
 
-    Returns
-    -----------
-    float
-         Noise signal Gaussian RMS value in log_e units, to be added as Gaussian source directly to log photoreceptor output signal
-    """
+    @property
+    def computation_count(self) -> int:
+        return self._computation_count
 
-    def compute_vn_from_log_rate_per_hz(thr, x):
+    def reset_cache(self) -> None:
+        self._last_args = None
+        self._last_vn = None
+
+    def _compute_vn_from_log_rate_per_hz(self, thr: float, x: float) -> float:
         # y = log10(thr/Vn)
         # x = log10(Rn/f3db)
         # see the plot Fig. 3 from Graca, Rui, and Tobi Delbruck. 2021. “Unraveling the Paradox of Intensity-Dependent DVS Pixel Noise.” arXiv [eess.SY]. arXiv. http://arxiv.org/abs/2109.08640.
@@ -270,97 +281,179 @@ def compute_photoreceptor_noise_voltage(shot_noise_rate_hz, f3db, sample_rate_hz
         y = -0.0026 * x ** 3 - 0.036 * x ** 2 - 0.1949 * x + 0.321
         thr_per_vn = 10 ** y  # to get thr/vn
         # compute necessary vn to give us this noise rate per pixel at this pixel bandwidth
-        vn = thr / thr_per_vn
-        return vn
+        return thr / thr_per_vn
 
-    # check if we already estimated the required noise for this sample rate
-    if not compute_photoreceptor_noise_voltage.last_sample_rate is None:
-        diff = np.abs(sample_rate_hz /
-                      compute_photoreceptor_noise_voltage.last_sample_rate-1)
-        if diff < 0.1:
-            return compute_photoreceptor_noise_voltage.last_vn  # return cached value
-
-    # simulation data are on ON event rates, divide by 2 here to end up with correct total rate
-    rate_per_bw = (shot_noise_rate_hz / f3db) / 2
-    if rate_per_bw > 0.5:
-        logger.warning(
-            f'shot noise rate per hz of bandwidth is larger than 0.1 (rate_hz={shot_noise_rate_hz} Hz, 3dB bandwidth={f3db} Hz)')
-    x = math.log10(rate_per_bw)
-    if x < -5.0:
-        logger.warning(
-            f'desired noise rate of {shot_noise_rate_hz}Hz is too low to accurately compute a threshold value')
-    elif x > 0.0:
-        logger.warning(
-            f'desired noise rate of {shot_noise_rate_hz}Hz is too large to accurately compute a threshold value')
-
-    # now we need to numerically estimate the required Vnrms given the thresholds and the sigma thresholds,
-    # since the noise rate varies dramatically with threshold
-    N = 300  # num samples
-    pos_samps = pos_thr+sigma_thr*np.random.default_rng().standard_normal(N)
-    neg_samps = neg_thr+sigma_thr*np.random.default_rng().standard_normal(N)
-    thrs = np.vstack((pos_samps, neg_samps))
-    mins = np.min(thrs, axis=0)
-    vns = np.zeros_like(mins)
-    for i in range(N):
-        thr = mins[i]
-
-        vn = compute_vn_from_log_rate_per_hz(thr, x)
-        vns[i] = vn
-
-    vn = np.mean(vns)
-    # now we need to find the scaling factor from white noise to get the correct noise vn after RC lowpass.
-    # # to get this NEB factor, we generate white samples here, lowpass filter them the same exact way
-    # as we do in the emulator (i.e. with same IIR time constant and sample rate)
-    # compute the variance, and scale the amplitude to give us vn
-    compute_photoreceptor_noise_voltage.last_sample_rate = sample_rate_hz
-    tau = 1/(f3db*2*math.pi)
-    dt = 1/sample_rate_hz
-    t = np.arange(0, 1000*tau, dt)
-    # generated Gaussian random sequence with amplitude vn RMS
-    rin = vn*np.random.default_rng().standard_normal(t.shape)
-    rms_in = np.std(rin)  # check the RMS, should be vn
-    rout = np.zeros_like(rin)
-    # RC lowpass the noise
-    eps = dt/tau
-    eps_limit = .1
-    if eps > eps_limit:
-        logger.warning(f'\neps={eps:.3f} for IIR lowpass is >{eps_limit}, either reduce timestep (currently {dt:.3f}s) (using higher frame rate) or decrease cutuff_hz (currently {f3db:.3f} Hz)'
-                       f'\n\tExpect the generated shot noise rate to be significantly lower than the desired rate.'
-                       f'\n\tConsider not using --photoreceptor_noise option if you only want simple Poisson shot noise without temporal correlation of lowpass filtering and ON/OFF events.')
-    rout[0] = 0  # init value is mean 0
-    # lp filter the sequence with same tau and dt as v2e
-    for i in range(1, len(rin)):
-        rout[i] = rout[i-1]*(1-eps)+rin[i]*eps
-    rms_out = np.std(rout)  # compute the amplitude of this noise
-    scale = rms_in/rms_out
-    # divide the computed vn to get the necessary vn to add before RC lowpass filtering
-    vnscaled = scale*vn
-    new_rms_out = np.std(scale*rin)  # check RMS of scaled noise
-
-    compute_photoreceptor_noise_voltage.last_vn = vnscaled
-    # rout*=vnscaled
-    # stdout=np.std(rout)
-    # import matplotlib.pyplot as plt
-    # plt.plot(t,rin,t,rout)
-    # plt.xlabel('time (s)')
-    # plt.ylabel('filtered noise')
-    # plt.show()
-    if not compute_photoreceptor_noise_voltage.vrms_computation_printed:
-        logger.info(
-            f'For desired shot_noise_rate_hz={shot_noise_rate_hz} Hz, computed photoreceptor_noise_rms={vn:.3f} in ln units,'
-            f' scaled by factor {scale:.3f} to {vnscaled:.3f} before 1st-order lowpass with sample rate {sample_rate_hz:.3} Hz, '
-            f'sample interval dt={dt*1000:.3f} ms,'
-            f', cutoff_hz={f3db} Hz, tau={tau*1000:.3f} ms,  Rn/f3dB={rate_per_bw:.3g} Hz, '
-            f' and nominal on/off threshold={pos_thr}/{neg_thr} +/- {sigma_thr:.3f} ln units.'
-            # f' The sample lowpass filtered has RMS amplitude {stdout:.3f}.'
+    def _cache_hit(self,
+                   shot_noise_rate_hz: float,
+                   f3db: float,
+                   sample_rate_hz: float,
+                   pos_thr: float,
+                   neg_thr: float,
+                   sigma_thr: float) -> bool:
+        
+        if self._last_args is None or self._last_vn is None:
+            return False
+        
+        last_shot_noise_rate_hz, last_f3db, last_sample_rate_hz, last_pos_thr, last_neg_thr, last_sigma_thr = self._last_args
+        
+        if not np.isclose(
+                sample_rate_hz, last_sample_rate_hz,
+                rtol=self.sample_rate_rel_tolerance,
+                atol=self.value_abs_tolerance):
+            return False
+        
+        return (
+            np.isclose(shot_noise_rate_hz, last_shot_noise_rate_hz, rtol=self.value_rel_tolerance, atol=self.value_abs_tolerance)
+            and np.isclose(f3db, last_f3db, rtol=self.value_rel_tolerance, atol=self.value_abs_tolerance)
+            and np.isclose(pos_thr, last_pos_thr, rtol=self.value_rel_tolerance, atol=self.value_abs_tolerance)
+            and np.isclose(neg_thr, last_neg_thr, rtol=self.value_rel_tolerance, atol=self.value_abs_tolerance)
+            and np.isclose(sigma_thr, last_sigma_thr, rtol=self.value_rel_tolerance, atol=self.value_abs_tolerance)
         )
-        compute_photoreceptor_noise_voltage.vrms_computation_printed = True
-    return vnscaled
+
+    def __call__(self,
+                 shot_noise_rate_hz: float,
+                 f3db: float,
+                 sample_rate_hz: float,
+                 pos_thr: float,
+                 neg_thr: float,
+                 sigma_thr: float) -> float:
+        """
+         Computes the necessary photoreceptor noise voltage to result in observed shot noise rate at low light intensity.
+         This computation relies on the known f3dB photoreceptor lowpass filter cutoff frequency and the known (nominal) event threshold.
+         emulator.py injects Gaussian distributed noise to the photoreceptor that should in principle generate the desired shot noise events.
+
+         See the file media/noise_event_rate_simulation.xlsx for the simulation data and curve fit.
+
+        Parameters
+        -----------
+         shot_noise_rate_hz: float
+            the desired pixel shot noise rate in hz
+         f3db: float
+            the 1st-order IIR RC lowpass filter cutoff frequency in Hz
+         sample_rate_hz: float
+            the sample rate (up-sampled frame rate) before IIR lowpassing the noise
+         pos_thr:float
+            on threshold in ln units
+         neg_thr:float
+            off threshold in ln units. The on and off thresholds are averaged to obtain a single threshold.
+         sigma_thr: float
+            the std deviations of the thresholds
+
+        Returns
+        -----------
+        float
+             Noise signal Gaussian RMS value in log_e units, to be added as Gaussian source directly to log photoreceptor output signal
+        """
+        if self._cache_hit(
+                shot_noise_rate_hz=shot_noise_rate_hz, f3db=f3db, sample_rate_hz=sample_rate_hz,
+                pos_thr=pos_thr, neg_thr=neg_thr, sigma_thr=sigma_thr):
+            assert self._last_vn is not None
+            return self._last_vn
+
+        # Simulation data are on ON event rates, divide by 2 here to end up with correct total rate
+        rate_per_bw = 0.5 * (shot_noise_rate_hz / f3db)
+        
+        if rate_per_bw > 0.5:
+            logger.warning(
+                f'Shot noise rate per hz of bandwidth is larger than 0.1 (rate_hz={shot_noise_rate_hz} Hz, 3dB bandwidth={f3db} Hz)')
+            
+        x = math.log10(rate_per_bw)
+
+        if x < -5.0:
+            logger.warning(
+                f'Desired noise rate of {shot_noise_rate_hz}Hz is too low to accurately compute a threshold value')
+            
+        elif x > 0.0:
+            logger.warning(
+                f'Desired noise rate of {shot_noise_rate_hz}Hz is too large to accurately compute a threshold value')
+
+        # Now we need to numerically estimate the required Vnrms given the thresholds and the sigma thresholds, since the noise rate varies dramatically with threshold
+        
+        # Sample thresholds from the distribution defined by the nominal threshold and sigma, compute the noise voltage for each sampled threshold, and average to get the final vn
+        pos_samps = pos_thr + sigma_thr * self._rng.standard_normal(self.num_threshold_samples)
+        neg_samps = neg_thr + sigma_thr * self._rng.standard_normal(self.num_threshold_samples)
+
+        mins = np.minimum(pos_samps, neg_samps)
+        
+        # Compute the necessary vn for each sampled threshold, and average
+        y = -0.0026 * x ** 3 - 0.036 * x ** 2 - 0.1949 * x + 0.321 # DOUBT what's this?
+        thr_per_vn = 10 ** y
+        vn = float(np.mean(mins / thr_per_vn))
+
+        # Now we need to find the scaling factor from white noise. To get the correct noise vn after RC lowpass to get this NEB factor, we generate white samples here, lowpass filter them the same exact way as we do in the emulator (i.e. with same IIR time constant and sample rate). Compute the variance, and scale the amplitude to give us vn
+        tau = 1/(f3db*2*math.pi)
+
+        dt = 1/sample_rate_hz
+        t = np.arange(0, 1000*tau, dt)
+        
+        # Generated Gaussian random sequence with amplitude vn RMS
+        
+        rin = vn * self._rng.standard_normal(t.shape)
+        rms_in = np.std(rin)  # Check the RMS, should be vn
+        rout = np.zeros_like(rin)
+
+        # RC lowpass the noise
+        eps = dt/tau
+        eps_limit = .1
+
+        if eps > eps_limit:
+            logger.warning(f'\neps={eps:.3f} for IIR lowpass is >{eps_limit}, either reduce timestep (currently {dt:.3f}s) (using higher frame rate) or decrease cutuff_hz (currently {f3db:.3f} Hz)'
+                           f'\n\tExpect the generated shot noise rate to be significantly lower than the desired rate.'
+                           f'\n\tConsider not using --photoreceptor_noise option if you only want simple Poisson shot noise without temporal correlation of lowpass filtering and ON/OFF events.')
+        rout[0] = 0  # init value is mean 0
+        # lp filter the sequence with same tau and dt as v2e
+        for i in range(1, len(rin)):
+            rout[i] = rout[i-1]*(1-eps) + rin[i]*eps
+        rms_out = np.std(rout)  # compute the amplitude of this noise
+        scale = rms_in / rms_out
+
+        # divide the computed vn to get the necessary vn to add before RC lowpass filtering
+        vnscaled = float(scale * vn)
+
+        self._last_vn = vnscaled
+        self._last_args = (
+            float(shot_noise_rate_hz),
+            float(f3db),
+            float(sample_rate_hz),
+            float(pos_thr),
+            float(neg_thr),
+            float(sigma_thr),
+        )
+        self._computation_count += 1
+
+        if not self._vrms_computation_printed:
+            logger.info(
+                f'For desired shot_noise_rate_hz={shot_noise_rate_hz} Hz, computed photoreceptor_noise_rms={vn:.3f} in ln units,'
+                f' scaled by factor {scale:.3f} to {vnscaled:.3f} before 1st-order lowpass with sample rate {sample_rate_hz:.3} Hz, '
+                f'sample interval dt={dt*1000:.3f} ms,'
+                f', cutoff_hz={f3db} Hz, tau={tau*1000:.3f} ms,  Rn/f3dB={rate_per_bw:.3g} Hz, '
+                f' and nominal on/off threshold={pos_thr}/{neg_thr} +/- {sigma_thr:.3f} ln units.'
+                # f' The sample lowpass filtered has RMS amplitude {stdout:.3f}.'
+            )
+            self._vrms_computation_printed = True
+        return vnscaled
 
 
-compute_photoreceptor_noise_voltage.vrms_computation_printed = False
-compute_photoreceptor_noise_voltage.last_sample_rate = None
-compute_photoreceptor_noise_voltage.last_vn = None
+_DEFAULT_PHOTORECEPTOR_NOISE_ESTIMATOR = PhotoreceptorNoiseVoltageEstimator()
+
+
+def compute_photoreceptor_noise_voltage(
+        shot_noise_rate_hz: float,
+        f3db: float,
+        sample_rate_hz: float,
+        pos_thr: float,
+        neg_thr: float,
+        sigma_thr: float) -> float:
+    """Backward-compatible wrapper around a shared estimator instance."""
+    
+    return _DEFAULT_PHOTORECEPTOR_NOISE_ESTIMATOR(
+        shot_noise_rate_hz=shot_noise_rate_hz,
+        f3db=f3db,
+        sample_rate_hz=sample_rate_hz,
+        pos_thr=pos_thr,
+        neg_thr=neg_thr,
+        sigma_thr=sigma_thr,
+    )
 
 
 def generate_shot_noise(shot_noise_rate_hz,

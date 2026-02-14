@@ -200,8 +200,8 @@ def v2e_args(parser):
              "Set to 0 to disable this feature.")
     modelGroup.add_argument(
         "--dvs_emulator_seed", type=int, default=0,
-        help="Set to a integer >0 to use a fixed random seed."
-             "default is 0 which means the random seed is not fixed.")
+        help="Set to an integer >0 to use a fixed random seed."
+             " Default is 0: v2e auto-generates a random positive seed each run.")
 
     modelGroup.add_argument(
         "--show_dvs_model_state", nargs='+', default=None,
