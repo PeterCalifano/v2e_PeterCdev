@@ -14,7 +14,6 @@ import torch.nn.functional as F
 logger = logging.getLogger(__name__)
 
 
-
 def lin_log(x, threshold=20):
     """
     linear mapping + logarithmic mapping.
@@ -32,7 +31,7 @@ def lin_log(x, threshold=20):
 
     f = (1./threshold) * math.log(threshold)
 
-    #KEY[D-LINLOG]: Fig. 5D in Hu et al. 2021 (v2e paper): piecewise
+    # KEY[D-LINLOG]: Fig. 5D in Hu et al. 2021 (v2e paper): piecewise
     # lin-log mapping from luma Y to log-domain brightness L.
     y = torch.where(x <= threshold, x*f, torch.log(x))
 
@@ -53,15 +52,79 @@ def rescale_intensity_frame(new_frame):
     make sure we get no zero time constants
     limit max time constant to ~1/10 of white intensity level
     """
-    return (new_frame+20)/275.
+    return (new_frame + 20) / 275.  # DEVNOTE why +20?
 
 
-def low_pass_filter(
-        log_new_frame,
-        lp_log_frame,
-        inten01,
-        delta_time,
-        cutoff_hz=0):
+IIR_MAX_WARNINGS = 10
+
+class LowPassFilter:
+    """Callable first-order IIR low-pass filter with precomputed time constant."""
+
+    __slots__ = ("cutoff_hz", "tau", "iir_warning_count")
+
+    def __init__(self, cutoff_hz: float = 0.0, tau: float | None = None):
+        self.cutoff_hz = float(cutoff_hz)
+        if tau is None:
+            self.tau = 1 / (2 * math.pi * self.cutoff_hz) if self.cutoff_hz > 0 else -1.0
+        else:
+            self.tau = float(tau)
+        self.iir_warning_count = 0
+
+    def __call__(self,
+                 log_new_frame: torch.Tensor,
+                 lp_log_frame: torch.Tensor,
+                 inten01: torch.Tensor | None,
+                 delta_time: float,
+                 filter_tau_const: float | None = None) -> torch.Tensor:
+        
+        # Get the time constant tau for the low-pass filter. If cutoff_hz is non-positive, skip filtering.
+        if filter_tau_const is not None:
+            tau = filter_tau_const
+        else:
+            tau = self.tau if self.tau > 0 else (1 / (2 * math.pi * self.cutoff_hz) if self.cutoff_hz > 0 else -1.0)
+        
+        if tau <= 0:
+            logger.warning(f'cutoff_hz={self.cutoff_hz} is non-positive, skipping low-pass filtering')
+            return log_new_frame
+
+        delta_over_tau = delta_time / tau
+
+        # make the update proportional to the local intensity
+        # the more intensity, the shorter the time constant
+        if inten01 is not None:
+            # KEY[E-LPF-EPS]: intensity-dependent update strength epsilon scales
+            # the filter bandwidth with brightness.
+            eps = inten01 * delta_over_tau
+
+            max_eps = torch.max(eps)
+
+            if max_eps > 0.3 and self.iir_warning_count < IIR_MAX_WARNINGS:
+                logger.warning(
+                    f'IIR lowpass filter update has large maximum update eps={max_eps:.2f} from delta_time/tau={delta_time:.3g}/{tau:.3g}')
+                self.iir_warning_count += 1
+                
+                if self.iir_warning_count == IIR_MAX_WARNINGS:
+                    logger.warning(
+                        'Supressing further warnings about inaccurate IIR lowpass filtering; check timestamp resolution and DVS photoreceptor cutoff frequency')
+
+            eps = torch.clamp(eps, max=1.0)
+        else:
+            eps = torch.tensor(delta_over_tau, dtype=torch.float32, device=log_new_frame.device) if isinstance(delta_over_tau, float) else delta_over_tau
+
+        # KEY[E-LPF-IIR]: first-order IIR update for filtered log intensity Llp.
+        return lp_log_frame + eps * (log_new_frame - lp_log_frame)
+
+
+_LOW_PASS_FILTER_CACHE: dict[tuple[float, float | None], LowPassFilter] = {}
+
+
+def apply_low_pass_filter(log_new_frame,
+                    lp_log_frame,
+                    inten01,
+                    delta_time,
+                    cutoff_hz=0,
+                          filter_tau_const: float | None = None,
+                    low_pass_filter: LowPassFilter | None = None):
     """Compute intensity-dependent low-pass filter.
 
     # Arguments
@@ -70,52 +133,26 @@ def low_pass_filter(
         inten01: the scaling of filter time constant array, or None to not scale
         delta_time:
         cutoff_hz:
+        filter_tau_const: if not None, use this fixed time constant instead of computing it from cutoff_hz  
+        low_pass_filter:
 
     # Returns
         new_lp_log_frame
     """
-    if cutoff_hz <= 0:
-        # unchanged
-        return log_new_frame
+    if low_pass_filter is None:
 
-    # else low pass
-    #KEY[E-LPF-TAU]: Fig. 5E / Sec. 4 ("Finite intensity-dependent
-    # photoreceptor bandwidth"): tau from cutoff.
-    tau = 1/(math.pi*2*cutoff_hz)
+        cache_key = (float(cutoff_hz), None if filter_tau_const is None else float(filter_tau_const))
+        low_pass_filter = _LOW_PASS_FILTER_CACHE.get(cache_key)
+        
+        if low_pass_filter is None:
+            low_pass_filter = LowPassFilter(cutoff_hz=cutoff_hz, tau=filter_tau_const)
+            _LOW_PASS_FILTER_CACHE[cache_key] = low_pass_filter
 
-    # make the update proportional to the local intensity
-    # the more intensity, the shorter the time constant
-    if inten01 is not None:
-        #KEY[E-LPF-EPS]: intensity-dependent update strength epsilon scales
-        # the filter bandwidth with brightness.
-        eps = inten01*(delta_time/tau)
-        max_eps = torch.max(eps)
-        if max_eps >0.3:
-            IIR_MAX_WARNINGS = 10
-            if low_pass_filter.iir_warning_count<IIR_MAX_WARNINGS:
-                logger.warning(f'IIR lowpass filter update has large maximum update eps={max_eps:.2f} from delta_time/tau={delta_time:.3g}/{tau:.3g}')
-                low_pass_filter.iir_warning_count+=1
-                if low_pass_filter.iir_warning_count==IIR_MAX_WARNINGS:
-                    logger.warning(f'Supressing further warnings about inaccurate IIR lowpass filtering; check timestamp resolution and DVS photoreceptor cutoff frequency')
-
-        eps = torch.clamp(eps, max=1)  # keep filter stable
-    else:
-        eps=delta_time/tau
-
-    # first internal state is updated
-    #KEY[E-LPF-IIR]: first-order IIR update for filtered log intensity Llp.
-    new_lp_log_frame = (1-eps)*lp_log_frame+eps*log_new_frame
-
-    # then 2nd internal state (output) is updated from first
-    # Note that observations show that one pole is nearly always dominant,
-    # so the 2nd stage is just copy of first stage
-
-    # (1-eps)*self.lpLogFrame1+eps*self.lpLogFrame0 # was 2nd-order,
-    # now 1st order.
-
-    return new_lp_log_frame
-
-low_pass_filter.iir_warning_count=0
+    return low_pass_filter(
+        log_new_frame=log_new_frame,
+        lp_log_frame=lp_log_frame,
+        inten01=inten01,
+        delta_time=delta_time)
 
 
 def subtract_leak_current(base_log_frame,
@@ -130,11 +167,11 @@ def subtract_leak_current(base_log_frame,
         noise_rate_array.shape, dtype=torch.float32,
         device=noise_rate_array.device)
 
-    #KEY[F-LEAK-RATE]: Sec. 4(F) leak model with per-pixel randomization.
+    # KEY[F-LEAK-RATE]: Sec. 4(F) leak model with per-pixel randomization.
     curr_leak_rate = \
         leak_rate_hz*noise_rate_array*(1-leak_jitter_fraction*rand)
 
-    #KEY[F-LEAK-LMEM]: Lmem continuously decreases to create spontaneous ON
+    # KEY[F-LEAK-LMEM]: Lmem continuously decreases to create spontaneous ON
     # leak events.
     delta_leak = delta_time*curr_leak_rate*pos_thres  # this is a matrix
 
@@ -161,7 +198,7 @@ def compute_event_map(diff_frame, pos_thres, neg_thres):
     neg_frame = F.relu(-diff_frame)
 
     # compute quantized number of ON and OFF events for each pixel
-    #KEY[F-EVENT-QUANT]: Fig. 5F / Sec. 4 event generation:
+    # KEY[F-EVENT-QUANT]: Fig. 5F / Sec. 4 event generation:
     # DeltaL -> integer event count via threshold quantization.
     pos_evts_frame = torch.div(
         pos_frame, pos_thres, rounding_mode="floor").type(torch.int32)
@@ -220,71 +257,79 @@ def compute_photoreceptor_noise_voltage(shot_noise_rate_hz, f3db, sample_rate_hz
         # x = log10(Rn/f3db)
         # see the plot Fig. 3 from Graca, Rui, and Tobi Delbruck. 2021. “Unraveling the Paradox of Intensity-Dependent DVS Pixel Noise.” arXiv [eess.SY]. arXiv. http://arxiv.org/abs/2109.08640.
         # the fit is computed in media/noise_event_rate_simulation.xlsx spreadsheet
-        #KEY[G-PHOTO-VRMS-FIT]: fitted relation from Graca & Delbruck 2021
+        # KEY[G-PHOTO-VRMS-FIT]: fitted relation from Graca & Delbruck 2021
         # used to map target noise-rate-per-bandwidth to RMS noise voltage.
         y = -0.0026 * x ** 3 - 0.036 * x ** 2 - 0.1949 * x + 0.321
         thr_per_vn = 10 ** y  # to get thr/vn
-        vn = thr / thr_per_vn  # compute necessary vn to give us this noise rate per pixel at this pixel bandwidth
+        # compute necessary vn to give us this noise rate per pixel at this pixel bandwidth
+        vn = thr / thr_per_vn
         return vn
 
     # check if we already estimated the required noise for this sample rate
     if not compute_photoreceptor_noise_voltage.last_sample_rate is None:
-        diff=np.abs(sample_rate_hz/compute_photoreceptor_noise_voltage.last_sample_rate-1)
-        if diff<0.1:
-            return compute_photoreceptor_noise_voltage.last_vn # return cached value
+        diff = np.abs(sample_rate_hz /
+                      compute_photoreceptor_noise_voltage.last_sample_rate-1)
+        if diff < 0.1:
+            return compute_photoreceptor_noise_voltage.last_vn  # return cached value
 
-    rate_per_bw= (shot_noise_rate_hz / f3db) / 2 # simulation data are on ON event rates, divide by 2 here to end up with correct total rate
-    if rate_per_bw>0.5:
-        logger.warning(f'shot noise rate per hz of bandwidth is larger than 0.1 (rate_hz={shot_noise_rate_hz} Hz, 3dB bandwidth={f3db} Hz)')
-    x=math.log10(rate_per_bw)
-    if x<-5.0:
-        logger.warning(f'desired noise rate of {shot_noise_rate_hz}Hz is too low to accurately compute a threshold value')
-    elif x>0.0:
-        logger.warning(f'desired noise rate of {shot_noise_rate_hz}Hz is too large to accurately compute a threshold value')
+    # simulation data are on ON event rates, divide by 2 here to end up with correct total rate
+    rate_per_bw = (shot_noise_rate_hz / f3db) / 2
+    if rate_per_bw > 0.5:
+        logger.warning(
+            f'shot noise rate per hz of bandwidth is larger than 0.1 (rate_hz={shot_noise_rate_hz} Hz, 3dB bandwidth={f3db} Hz)')
+    x = math.log10(rate_per_bw)
+    if x < -5.0:
+        logger.warning(
+            f'desired noise rate of {shot_noise_rate_hz}Hz is too low to accurately compute a threshold value')
+    elif x > 0.0:
+        logger.warning(
+            f'desired noise rate of {shot_noise_rate_hz}Hz is too large to accurately compute a threshold value')
 
     # now we need to numerically estimate the required Vnrms given the thresholds and the sigma thresholds,
     # since the noise rate varies dramatically with threshold
-    N=300 # num samples
-    pos_samps=pos_thr+sigma_thr*np.random.default_rng().standard_normal(N)
-    neg_samps=neg_thr+sigma_thr*np.random.default_rng().standard_normal(N)
-    thrs=np.vstack((pos_samps,neg_samps))
-    mins=np.min(thrs,axis=0)
-    vns=np.zeros_like(mins)
+    N = 300  # num samples
+    pos_samps = pos_thr+sigma_thr*np.random.default_rng().standard_normal(N)
+    neg_samps = neg_thr+sigma_thr*np.random.default_rng().standard_normal(N)
+    thrs = np.vstack((pos_samps, neg_samps))
+    mins = np.min(thrs, axis=0)
+    vns = np.zeros_like(mins)
     for i in range(N):
-        thr=mins[i]
+        thr = mins[i]
 
         vn = compute_vn_from_log_rate_per_hz(thr, x)
-        vns[i]=vn
+        vns[i] = vn
 
-    vn=np.mean(vns)
+    vn = np.mean(vns)
     # now we need to find the scaling factor from white noise to get the correct noise vn after RC lowpass.
     # # to get this NEB factor, we generate white samples here, lowpass filter them the same exact way
     # as we do in the emulator (i.e. with same IIR time constant and sample rate)
     # compute the variance, and scale the amplitude to give us vn
-    compute_photoreceptor_noise_voltage.last_sample_rate=sample_rate_hz
-    tau=1/(f3db*2*math.pi)
-    dt=1/sample_rate_hz
-    t=np.arange(0,1000*tau,dt)
-    rin = vn*np.random.default_rng().standard_normal(t.shape) # generated Gaussian random sequence with amplitude vn RMS
-    rms_in=np.std(rin) # check the RMS, should be vn
-    rout=np.zeros_like(rin)
+    compute_photoreceptor_noise_voltage.last_sample_rate = sample_rate_hz
+    tau = 1/(f3db*2*math.pi)
+    dt = 1/sample_rate_hz
+    t = np.arange(0, 1000*tau, dt)
+    # generated Gaussian random sequence with amplitude vn RMS
+    rin = vn*np.random.default_rng().standard_normal(t.shape)
+    rms_in = np.std(rin)  # check the RMS, should be vn
+    rout = np.zeros_like(rin)
     # RC lowpass the noise
-    eps=dt/tau
-    eps_limit=.1
-    if eps>eps_limit:
+    eps = dt/tau
+    eps_limit = .1
+    if eps > eps_limit:
         logger.warning(f'\neps={eps:.3f} for IIR lowpass is >{eps_limit}, either reduce timestep (currently {dt:.3f}s) (using higher frame rate) or decrease cutuff_hz (currently {f3db:.3f} Hz)'
                        f'\n\tExpect the generated shot noise rate to be significantly lower than the desired rate.'
                        f'\n\tConsider not using --photoreceptor_noise option if you only want simple Poisson shot noise without temporal correlation of lowpass filtering and ON/OFF events.')
-    rout[0]=0 # init value is mean 0
+    rout[0] = 0  # init value is mean 0
     # lp filter the sequence with same tau and dt as v2e
-    for i in range(1,len(rin)):
-        rout[i]=rout[i-1]*(1-eps)+rin[i]*eps
-    rms_out=np.std(rout) # compute the amplitude of this noise
-    scale=rms_in/rms_out #
-    vnscaled=scale*vn # divide the computed vn to get the necessary vn to add before RC lowpass filtering
-    new_rms_out=np.std(scale*rin) # check RMS of scaled noise
+    for i in range(1, len(rin)):
+        rout[i] = rout[i-1]*(1-eps)+rin[i]*eps
+    rms_out = np.std(rout)  # compute the amplitude of this noise
+    scale = rms_in/rms_out
+    # divide the computed vn to get the necessary vn to add before RC lowpass filtering
+    vnscaled = scale*vn
+    new_rms_out = np.std(scale*rin)  # check RMS of scaled noise
 
-    compute_photoreceptor_noise_voltage.last_vn=vnscaled
+    compute_photoreceptor_noise_voltage.last_vn = vnscaled
     # rout*=vnscaled
     # stdout=np.std(rout)
     # import matplotlib.pyplot as plt
@@ -294,19 +339,21 @@ def compute_photoreceptor_noise_voltage(shot_noise_rate_hz, f3db, sample_rate_hz
     # plt.show()
     if not compute_photoreceptor_noise_voltage.vrms_computation_printed:
         logger.info(
-        f'For desired shot_noise_rate_hz={shot_noise_rate_hz} Hz, computed photoreceptor_noise_rms={vn:.3f} in ln units,'
-        f' scaled by factor {scale:.3f} to {vnscaled:.3f} before 1st-order lowpass with sample rate {sample_rate_hz:.3} Hz, '
-        f'sample interval dt={dt*1000:.3f} ms,'
-        f', cutoff_hz={f3db} Hz, tau={tau*1000:.3f} ms,  Rn/f3dB={rate_per_bw:.3g} Hz, '
-        f' and nominal on/off threshold={pos_thr}/{neg_thr} +/- {sigma_thr:.3f} ln units.'
-        # f' The sample lowpass filtered has RMS amplitude {stdout:.3f}.'
+            f'For desired shot_noise_rate_hz={shot_noise_rate_hz} Hz, computed photoreceptor_noise_rms={vn:.3f} in ln units,'
+            f' scaled by factor {scale:.3f} to {vnscaled:.3f} before 1st-order lowpass with sample rate {sample_rate_hz:.3} Hz, '
+            f'sample interval dt={dt*1000:.3f} ms,'
+            f', cutoff_hz={f3db} Hz, tau={tau*1000:.3f} ms,  Rn/f3dB={rate_per_bw:.3g} Hz, '
+            f' and nominal on/off threshold={pos_thr}/{neg_thr} +/- {sigma_thr:.3f} ln units.'
+            # f' The sample lowpass filtered has RMS amplitude {stdout:.3f}.'
         )
-        compute_photoreceptor_noise_voltage.vrms_computation_printed=True
+        compute_photoreceptor_noise_voltage.vrms_computation_printed = True
     return vnscaled
 
-compute_photoreceptor_noise_voltage.vrms_computation_printed=False
-compute_photoreceptor_noise_voltage.last_sample_rate=None
-compute_photoreceptor_noise_voltage.last_vn=None
+
+compute_photoreceptor_noise_voltage.vrms_computation_printed = False
+compute_photoreceptor_noise_voltage.last_sample_rate = None
+compute_photoreceptor_noise_voltage.last_vn = None
+
 
 def generate_shot_noise(
         shot_noise_rate_hz,
@@ -329,30 +376,31 @@ def generate_shot_noise(
     """
     # new shot noise generator, generate for the entire batch of iterations over this frame
 
-    if shot_noise_rate_hz*delta_time>1:
-        logger.warning(f'shot_noise_rate_hz*delta_time={shot_noise_rate_hz:.2f}*{delta_time:.2g}={shot_noise_rate_hz*delta_time:.2f} is too large, decrease timestamp resolution or sample rate')
+    if shot_noise_rate_hz*delta_time > 1:
+        logger.warning(
+            f'shot_noise_rate_hz*delta_time={shot_noise_rate_hz:.2f}*{delta_time:.2g}={shot_noise_rate_hz*delta_time:.2f} is too large, decrease timestamp resolution or sample rate')
 
     # shot noise factor is the probability of generating an OFF event in this frame (which is tiny typically)
     # we compute it by taking half the total shot noise rate (OFF only),
     # multiplying by the delta time of this frame,
     # and multiplying by the intensity factor
     # division by num_iter is correct if generate_shot_noise is called outside the iteration loop, unless num_iter=1 for calling outside loop
-    #KEY[G-SHOT-PROB]: Sec. 4(G) temporal noise model (Poisson-style per
+    # KEY[G-SHOT-PROB]: Sec. 4(G) temporal noise model (Poisson-style per
     # sample probabilities scaled by delta time and brightness).
     shot_noise_factor = (
         (shot_noise_rate_hz/2)*delta_time) * \
-        ((shot_noise_inten_factor-1)*inten01+1) # =1 for inten=0 and SHOT_NOISE_INTEN_FACTOR for inten=1 # TODO check this logic again, the shot noise rate should increase with intensity but factor is negative here
+        ((shot_noise_inten_factor-1)*inten01+1)  # =1 for inten=0 and SHOT_NOISE_INTEN_FACTOR for inten=1 # TODO check this logic again, the shot noise rate should increase with intensity but factor is negative here
 
     # probability for each pixel is
     # dt*rate*nom_thres/actual_thres.
     # That way, the smaller the threshold,
     # the larger the rate
-    #KEY[G-SHOT-THRESH]: compare uniform random samples against ON/OFF
+    # KEY[G-SHOT-THRESH]: compare uniform random samples against ON/OFF
     # thresholds to emit temporal noise events.
     one_minus_shot_ON_prob_this_sample = \
-        1 - shot_noise_factor*pos_thres_pre_prob # ON shot events are generated when uniform sampled random number from range 0-1 is larger than this; the larger shot_noise_factor, the larger the noise rate
+        1 - shot_noise_factor*pos_thres_pre_prob  # ON shot events are generated when uniform sampled random number from range 0-1 is larger than this; the larger shot_noise_factor, the larger the noise rate
     shot_OFF_prob_this_sample = \
-        shot_noise_factor*neg_thres_pre_prob # OFF shot events when 0-1 sample less than this
+        shot_noise_factor*neg_thres_pre_prob  # OFF shot events when 0-1 sample less than this
 
     # for shot noise generate rands from 0-1 for each pixel
     rand01 = torch.rand(

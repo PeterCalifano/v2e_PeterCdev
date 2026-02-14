@@ -18,7 +18,7 @@ from screeninfo import get_monitors
 from v2ecore.emulator_utils import compute_event_map, compute_photoreceptor_noise_voltage
 from v2ecore.emulator_utils import generate_shot_noise
 from v2ecore.emulator_utils import lin_log
-from v2ecore.emulator_utils import low_pass_filter
+from v2ecore.emulator_utils import LowPassFilter
 from v2ecore.emulator_utils import rescale_intensity_frame
 from v2ecore.emulator_utils import subtract_leak_current
 from v2ecore.output.ae_text_output import DVSTextOutput
@@ -231,6 +231,7 @@ class EventEmulator(object):
 
         # non-idealities
         self.cutoff_hz = cutoff_hz
+        self.low_pass_filter = LowPassFilter(cutoff_hz=self.cutoff_hz)
         self.leak_rate_hz = leak_rate_hz
         self.refractory_period_s = refractory_period_s
         self.shot_noise_rate_hz = shot_noise_rate_hz
@@ -604,6 +605,7 @@ class EventEmulator(object):
             self.sigma_thres, self.cutoff_hz,
             self.leak_rate_hz, self.shot_noise_rate_hz,
             self.refractory_period_s))
+        self.low_pass_filter = LowPassFilter(cutoff_hz=self.cutoff_hz)
 
     def reset(self):
         '''resets so that next use will reinitialize the base frame
@@ -690,9 +692,9 @@ class EventEmulator(object):
 
         # like a DAVIS, write frame into the file if it's HDF5
         if self.frame_h5_dataset is not None:
+            # TODO remove this option, seems useless or 
             # Save frame data
-            self.frame_h5_dataset[self.frame_counter] = \
-                new_frame.astype(np.uint8)
+            self.frame_h5_dataset[self.frame_counter] = new_frame.astype(np.uint8)
 
         # update frame counter
         self.frame_counter += 1
@@ -707,21 +709,22 @@ class EventEmulator(object):
         delta_time = t_frame - self.t_previous
         # logger.debug('delta_time={}'.format(delta_time))
 
-        if self.log_input and new_frame.dtype != np.float32:
-            v2e_logger.warning('log_frame is True but input frame is not np.float32 datatype')
+        if self.log_input and new_frame.dtype != np.float32 and new_frame.dtype != np.float64:
+            v2e_logger.warning('log_frame is True but input frame is not np.float32 or np.float64 datatype')
 
-        # convert into torch tensor
+        # Convert into torch tensor
         self.new_frame = torch.tensor(new_frame, dtype=torch.float64,
                                       device=self.device)
+        
         #KEY[D-LINLOG-CALL]: apply Fig. 5D lin-log encoding to luminance.
         # lin-log mapping, if input is not already float32 log input
         self.log_new_frame = lin_log(self.new_frame) if not self.log_input else self.new_frame
 
-        inten01 = None  # define for later
-        if self.cutoff_hz > 0 or self.shot_noise_rate_hz > 0:  # will use later
-            # Time constant of the filter is proportional to
-            # the intensity value (with offset to deal with DN=0)
-            # limit max time constant to ~1/10 of white intensity level
+        inten01 = None  # Intensity scaled to [0,1] range, used for intensity-dependent noise and bandwidth models, only computed if those models are enabled
+
+        if self.cutoff_hz > 0 or self.shot_noise_rate_hz > 0:
+            # Time constant of the filter is proportional to the intensity value (with offset to deal with DN=0) limit max time constant to ~1/10 of white intensity level
+
             # TODO (PC) this function assumes range is [0,255] not necessarily uint8
             #KEY[E-INTEN-SCALE]: brightness-dependent scaling factor for
             # photoreceptor bandwidth/noise models.
@@ -739,12 +742,11 @@ class EventEmulator(object):
             self.photoreceptor_noise_arr = torch.zeros_like(self.lp_log_frame)
 
         #KEY[E-LPF-CALL]: Fig. 5E finite photoreceptor bandwidth model.
-        self.lp_log_frame = low_pass_filter(
+        self.lp_log_frame = self.low_pass_filter(
             log_new_frame=self.log_new_frame,
             lp_log_frame=self.lp_log_frame,
             inten01=inten01,
-            delta_time=delta_time,
-            cutoff_hz=self.cutoff_hz)
+            delta_time=delta_time)
 
         #KEY[G-PHOTO-NOISE-INJECT]: optional temporal-noise path that injects
         # Gaussian photoreceptor noise before thresholding.
@@ -755,8 +757,11 @@ class EventEmulator(object):
                 pos_thr=self.pos_thres_nominal, neg_thr=self.neg_thres_nominal, sigma_thr=self.sigma_thres)
             noise = self.photoreceptor_noise_vrms * torch.randn(self.log_new_frame.shape, dtype=torch.float32,
                                                                 device=self.device)
-            self.photoreceptor_noise_arr = low_pass_filter(noise, self.photoreceptor_noise_arr, None, delta_time,
-                                                           self.cutoff_hz)
+            self.photoreceptor_noise_arr = self.low_pass_filter(
+                log_new_frame=noise,
+                lp_log_frame=self.photoreceptor_noise_arr,
+                inten01=None,
+                delta_time=delta_time)
             self.photoreceptor_noise_samples.append(
                 self.photoreceptor_noise_arr[0, 0].cpu().item())  # todo debugging can remove
             # std=np.std(self.photoreceptor_noise_samples)

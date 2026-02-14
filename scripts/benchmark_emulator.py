@@ -47,9 +47,11 @@ def _build_frames(
         if scenario == "motion":
             frame = np.roll(base, i % max(1, width // 20), axis=1)
             frame = np.clip(frame + 3.0 * np.sin(i * 0.2), 0, 255)
+
         elif scenario == "flicker":
             delta = 25 if (i % 2 == 0) else -25
             frame = np.clip(base + delta, 0, 255)
+
         elif scenario == "step":
             frame = np.where(base > 127, 255, 0).astype(np.float32)
             if i > (num_frames // 2):
@@ -63,8 +65,10 @@ def _build_frames(
 
 def _run_emulation(
         args: argparse.Namespace, frames: list[np.ndarray]) -> dict[str, float]:
+    
     dt = 1.0 / args.fps
-    emu = EventEmulator(
+    # Create the emulator instance with the specified parameters
+    emulator = EventEmulator(
         pos_thres=args.pos_thres,
         neg_thres=args.neg_thres,
         sigma_thres=args.sigma_thres,
@@ -85,19 +89,25 @@ def _run_emulation(
     t_frame = 0.0
 
     with torch.no_grad():
+        # Process each frame through the emulator and measure time taken
         for frame in frames:
+
             start = time.perf_counter()
-            events = emu.generate_events(frame, t_frame)
+            events = emulator.generate_events(frame, t_frame)
             elapsed_ms = (time.perf_counter() - start) * 1000.0
             per_frame_ms.append(elapsed_ms)
+            
             if events is not None and events.shape[0] > 0:
                 total_events += int(events.shape[0])
                 nonempty_packets += 1
+            
             t_frame += dt
 
-    emu.cleanup()
+    # Reset the emulator to flush any remaining events and perform cleanup
+    emulator.cleanup()
 
     runtime_s = sum(per_frame_ms) / 1000.0
+
     return {
         "runtime_s": runtime_s,
         "frames": float(len(frames)),
@@ -147,12 +157,15 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+
+    # Parse command-line arguments and choose device
     args = parse_args()
     args.device = _choose_device(args.device)
 
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
 
+    # Build synthetic frames based on the chosen scenario
     frames = _build_frames(
         scenario=args.scenario,
         num_frames=args.frames,
@@ -161,6 +174,8 @@ def main() -> None:
     )
 
     if args.profile:
+
+        # Run the emulation with cProfile to collect detailed performance data
         profiler = cProfile.Profile()
         profiler.enable()
         stats = _run_emulation(args, frames)
@@ -169,8 +184,10 @@ def main() -> None:
         sio = io.StringIO()
         pstats.Stats(profiler, stream=sio).sort_stats(
             "cumtime").print_stats(args.profile_top)
+        
         print("\n[PROFILE] Top cumulative functions")
         print(sio.getvalue())
+
         if args.profile_dump is not None:
             profiler.dump_stats(str(args.profile_dump))
             print(f"[PROFILE] Saved raw profile: {args.profile_dump}")
