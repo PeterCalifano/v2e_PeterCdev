@@ -1000,7 +1000,7 @@ def main():
             logger.warning(
                 '{}: could not open {} in desktop'.format(e, output_folder))
     logger.info(timestr)
-    sys.exit(0)
+    return
 
 
 if __name__ == "__main__":
