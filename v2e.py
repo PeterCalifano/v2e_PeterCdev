@@ -646,6 +646,7 @@ def main():
         exposure_mode=exposure_mode,
         exposure_value=exposure_val,
         area_dimension=area_dimension,
+        color_mode=args.dvs_vid_color_mode,
         avi_frame_rate=args.avi_frame_rate)
 
     def flush_event_batch(

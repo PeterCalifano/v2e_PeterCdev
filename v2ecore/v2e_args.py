@@ -381,6 +381,12 @@ def v2e_args(parser):
         help="Set full scale event count histogram count for DVS videos "
              "to be this many ON or OFF events for full white or black.")
     outGroupDvsVideo.add_argument(
+        "--dvs_vid_color_mode", type=str, default="green_red",
+        choices=["grayscale", "green_red"],
+        help="Color mode for DVS video and preview. "
+             "'grayscale' uses white/black event contrast; "
+             "'green_red' uses black background with ON events in green and OFF events in red.")
+    outGroupDvsVideo.add_argument(
         "--no_preview", action="store_true",
         help="disable preview in cv2 windows for faster processing.")
     # outGroupDvsVideo.add_argument(
