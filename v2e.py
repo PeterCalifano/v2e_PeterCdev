@@ -128,14 +128,19 @@ def main():
     # Set input file path
     input_file: str | None = args.input
     synthetic_input: str | None = args.synthetic_input
+    input_filepath: str | None = None
 
     if synthetic_input is not None and input_file is not None:
         logger.error(f'Both input_filepath {input_file} and synthetic_input {synthetic_input} are specified - you can only specify one of them')
         v2e_quit(1)
 
+    if synthetic_input is not None and args.output_in_place:
+        logger.error('--output_in_place cannot be used with --synthetic_input because there is no source file or folder path')
+        v2e_quit(1)
+
     if synthetic_input is None and input_file is None:
         try:
-            input_filepath:str  = inputVideoFileDialog()
+            input_filepath = inputVideoFileDialog()
             if input_filepath is None:
                 logger.info('no file selected, quitting')
                 v2e_quit()
@@ -143,7 +148,7 @@ def main():
             logger.error(f'no input file specified and cannot show input file dialog; are you running without graphical display? ({e})')
             v2e_quit(1)
     elif input_file is not None:
-        input_filepath: str = input_file
+        input_filepath = input_file
 
     # Set output folder
     output_folder = set_output_folder(
@@ -151,7 +156,7 @@ def main():
         input_filepath,
         args.unique_output_folder if not args.overwrite else False,
         args.overwrite,
-        args.output_in_place if (not synthetic_input) else False,
+        args.output_in_place,
         logger)
 
     # Set output width and height based on the arguments
@@ -692,21 +697,27 @@ def main():
             'processing frames {} to {} from video input'.format(
                 start_frame, stop_frame))
 
-        c_l=0
-        c_r=None
-        c_t=0
-        c_b=None
+        crop_left_pixels = 0
+        crop_right_pixels = 0
+        crop_top_pixels = 0
+        crop_bottom_pixels = 0
+        crop_right_slice_end = None
+        crop_bottom_slice_end = None
         if args.crop is not None:
-            c=args.crop
-            if len(c)!=4:
+            crop_values = args.crop
+            if len(crop_values)!=4:
                 logger.error(f'--crop must have 4 elements (you specified --crop={args.crop}')
                 v2e_quit(1)
 
-            c_l=c[0] if c[0] > 0 else 0
-            c_r=-c[1] if c[1]>0 else None
-            c_t=c[2] if c[2]>0 else 0
-            c_b=-c[3] if c[3]>0 else None
-            logger.info(f'cropping video by (left,right,top,bottom)=({c_l},{c_r},{c_t},{c_b})')
+            crop_left_pixels = crop_values[0] if crop_values[0] > 0 else 0
+            crop_right_pixels = crop_values[1] if crop_values[1] > 0 else 0
+            crop_top_pixels = crop_values[2] if crop_values[2] > 0 else 0
+            crop_bottom_pixels = crop_values[3] if crop_values[3] > 0 else 0
+            crop_right_slice_end = -crop_right_pixels if crop_right_pixels > 0 else None
+            crop_bottom_slice_end = -crop_bottom_pixels if crop_bottom_pixels > 0 else None
+            logger.info(
+                f'cropping video by (left,right,top,bottom)='
+                f'({crop_left_pixels},{crop_right_pixels},{crop_top_pixels},{crop_bottom_pixels})')
 
 
         with TemporaryDirectory() as source_frames_dir:
@@ -761,14 +772,21 @@ def main():
 
                 if args.crop is not None:
                     # crop the frame, indices are y,x, UL is 0,0
-                    if c_l+(c_r if c_r is not None else 0)>=inputWidth:
-                        logger.error(f'left {c_l} + right crop {c_r} is larger than image width {inputWidth}')
+                    if crop_left_pixels + crop_right_pixels >= inputWidth:
+                        logger.error(
+                            f'left crop {crop_left_pixels} + right crop '
+                            f'{crop_right_pixels} is larger than image width {inputWidth}')
                         v2e_quit(1)
-                    if c_t+(c_b if c_b is not None else 0)>=inputHeight:
-                        logger.error(f'top {c_t} + bottom crop {c_b} is larger than image height {inputHeight}')
+                    if crop_top_pixels + crop_bottom_pixels >= inputHeight:
+                        logger.error(
+                            f'top crop {crop_top_pixels} + bottom crop '
+                            f'{crop_bottom_pixels} is larger than image height {inputHeight}')
                         v2e_quit(1)
 
-                    inputVideoFrame= inputVideoFrame[c_t:c_b, c_l:c_r] # https://stackoverflow.com/questions/15589517/how-to-crop-an-image-in-opencv-using-python
+                    inputVideoFrame = inputVideoFrame[
+                        crop_top_pixels:crop_bottom_slice_end,
+                        crop_left_pixels:crop_right_slice_end
+                    ]  # https://stackoverflow.com/questions/15589517/how-to-crop-an-image-in-opencv-using-python
 
                 if output_height and output_width and \
                         (inputHeight != output_height or
