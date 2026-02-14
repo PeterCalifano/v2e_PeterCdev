@@ -1,4 +1,7 @@
 import numpy as np
+import pytest
+
+torch = pytest.importorskip("torch")
 
 from v2ecore.emulator import EventEmulator
 
@@ -237,3 +240,171 @@ def test_moving_blob_generates_on_and_off_events():
     # Blob translation should create ON events on the leading edge and OFF on trailing edge.
     pol = set(np.unique(events[:, 3]))
     assert pol == {-1.0, 1.0}
+
+
+def test_iebcs_latency_jitter_model_delays_timestamps_and_keeps_monotonic():
+    height, width = 24, 24
+    common_kwargs = dict(
+        pos_thres=0.2,
+        neg_thres=0.2,
+        sigma_thres=0.0,
+        cutoff_hz=0.0,
+        leak_rate_hz=0.0,
+        shot_noise_rate_hz=0.0,
+        photoreceptor_noise=False,
+        refractory_period_s=0.0,
+        seed=9,
+        output_width=width,
+        output_height=height,
+        device="cpu",
+    )
+
+    frame_0 = np.zeros((height, width), dtype=np.uint8)
+    frame_1 = np.full((height, width), 255, dtype=np.uint8)
+
+    emu_base = EventEmulator(
+        **common_kwargs,
+        iebcs_latency_jitter_model=False,
+    )
+    emu_base.generate_events(frame_0, 0.0)
+    events_base = emu_base.generate_events(frame_1, 1.0 / 30.0)
+    emu_base.cleanup()
+
+    emu_latency = EventEmulator(
+        **common_kwargs,
+        iebcs_latency_jitter_model=True,
+        iebcs_latency_mean_us=200.0,
+        iebcs_latency_jitter_us=0.0,
+    )
+    emu_latency.generate_events(frame_0, 0.0)
+    events_latency = emu_latency.generate_events(frame_1, 1.0 / 30.0)
+    emu_latency.cleanup()
+
+    assert events_base is not None and events_latency is not None
+    assert events_base.shape == events_latency.shape
+    assert np.all(np.diff(events_latency[:, 0]) >= 0)
+
+    base_ts = np.sort(events_base[:, 0])
+    latency_ts = np.sort(events_latency[:, 0])
+    assert np.allclose(latency_ts - base_ts, 200e-6, atol=1e-8)
+
+
+def test_iebcs_resample_thresholds_on_event_updates_thresholds_only_when_enabled():
+    height, width = 20, 20
+    common_kwargs = dict(
+        pos_thres=0.2,
+        neg_thres=0.2,
+        sigma_thres=0.03,
+        cutoff_hz=0.0,
+        leak_rate_hz=0.0,
+        shot_noise_rate_hz=0.0,
+        photoreceptor_noise=False,
+        refractory_period_s=0.0,
+        seed=17,
+        output_width=width,
+        output_height=height,
+        device="cpu",
+    )
+
+    frame_0 = np.zeros((height, width), dtype=np.uint8)
+    frame_1 = np.full((height, width), 255, dtype=np.uint8)
+
+    emu_disabled = EventEmulator(
+        **common_kwargs,
+        iebcs_resample_thresholds_on_event=False,
+    )
+    emu_disabled.generate_events(frame_0, 0.0)
+    pos_before_disabled = emu_disabled.pos_thres.clone()
+    neg_before_disabled = emu_disabled.neg_thres.clone()
+    events_disabled = emu_disabled.generate_events(frame_1, 1.0 / 30.0)
+    pos_after_disabled = emu_disabled.pos_thres.clone()
+    neg_after_disabled = emu_disabled.neg_thres.clone()
+    emu_disabled.cleanup()
+
+    emu_enabled = EventEmulator(
+        **common_kwargs,
+        iebcs_resample_thresholds_on_event=True,
+    )
+    emu_enabled.generate_events(frame_0, 0.0)
+    pos_before_enabled = emu_enabled.pos_thres.clone()
+    neg_before_enabled = emu_enabled.neg_thres.clone()
+    events_enabled = emu_enabled.generate_events(frame_1, 1.0 / 30.0)
+    pos_after_enabled = emu_enabled.pos_thres.clone()
+    neg_after_enabled = emu_enabled.neg_thres.clone()
+    emu_enabled.cleanup()
+
+    assert events_disabled is not None and events_disabled.shape[0] > 0
+    assert events_enabled is not None and events_enabled.shape[0] > 0
+
+    assert torch.equal(pos_before_disabled, pos_after_disabled)
+    assert torch.equal(neg_before_disabled, neg_after_disabled)
+
+    pos_changed = torch.any(~torch.isclose(pos_before_enabled, pos_after_enabled))
+    neg_changed = torch.any(~torch.isclose(neg_before_enabled, neg_after_enabled))
+    assert bool(pos_changed or neg_changed)
+
+
+def _run_burst_timestamp_mode(
+        *,
+        nonuniform_enabled: bool,
+        mode: str,
+        seed: int) -> np.ndarray:
+    height, width = 18, 18
+    emu = EventEmulator(
+        pos_thres=0.08,
+        neg_thres=0.08,
+        sigma_thres=0.0,
+        cutoff_hz=0.0,
+        leak_rate_hz=0.0,
+        shot_noise_rate_hz=0.0,
+        photoreceptor_noise=False,
+        refractory_period_s=0.0,
+        v2ce_nonuniform_burst_timestamps=nonuniform_enabled,
+        v2ce_burst_timestamps_mode=mode,
+        seed=seed,
+        output_width=width,
+        output_height=height,
+        device="cpu",
+    )
+    frame_0 = np.zeros((height, width), dtype=np.uint8)
+    frame_1 = np.full((height, width), 255, dtype=np.uint8)
+    emu.generate_events(frame_0, 0.0)
+    events = emu.generate_events(frame_1, 1.0 / 30.0)
+    emu.cleanup()
+    assert events is not None
+    return events
+
+
+def test_v2ce_random_burst_timestamps_are_nonuniform_and_monotonic():
+    events_linear = _run_burst_timestamp_mode(
+        nonuniform_enabled=False,
+        mode="random",
+        seed=23)
+    events_random = _run_burst_timestamp_mode(
+        nonuniform_enabled=True,
+        mode="random",
+        seed=23)
+
+    assert events_linear.shape[0] == events_random.shape[0]
+    assert np.all(np.diff(events_random[:, 0]) >= 0)
+
+    linear_unique_ts = np.unique(events_linear[:, 0])
+    random_unique_ts = np.unique(events_random[:, 0])
+    assert len(linear_unique_ts) > 1
+    assert len(random_unique_ts) == len(linear_unique_ts)
+    assert not np.allclose(random_unique_ts, linear_unique_ts, atol=1e-8)
+
+
+def test_v2ce_slope_mode_biases_events_later_than_random_mode():
+    events_random = _run_burst_timestamp_mode(
+        nonuniform_enabled=True,
+        mode="random",
+        seed=31)
+    events_slope = _run_burst_timestamp_mode(
+        nonuniform_enabled=True,
+        mode="slope",
+        seed=31)
+
+    assert events_random.shape[0] == events_slope.shape[0]
+    assert np.all(np.diff(events_slope[:, 0]) >= 0)
+    assert float(np.mean(events_slope[:, 0])) > float(np.mean(events_random[:, 0]))

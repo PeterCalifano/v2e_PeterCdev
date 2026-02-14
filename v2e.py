@@ -314,9 +314,21 @@ def main():
             'leak_rate_hz>0 but sigma_thres==0, '
             'so all leak events will be synchronous')
     shot_noise_rate_hz = args.shot_noise_rate_hz
+    iebcs_latency_jitter_model: bool = args.iebcs_latency_jitter_model
+    iebcs_latency_mean_us: float = args.iebcs_latency_mean_us
+    iebcs_latency_jitter_us: float = args.iebcs_latency_jitter_us
+    iebcs_resample_thresholds_on_event: bool = args.iebcs_resample_thresholds_on_event
+    v2ce_nonuniform_burst_timestamps: bool = args.v2ce_nonuniform_burst_timestamps
+    v2ce_burst_timestamps_mode: str = args.v2ce_burst_timestamps_mode
 
     if shot_noise_rate_hz < 0:
         logger.error('shot_noise_rate_hz must be non-negative')
+        v2e_quit(1)
+    if iebcs_latency_mean_us < 0:
+        logger.error('iebcs_latency_mean_us must be non-negative')
+        v2e_quit(1)
+    if iebcs_latency_jitter_us < 0:
+        logger.error('iebcs_latency_jitter_us must be non-negative')
         v2e_quit(1)
 
     # Event saving options
@@ -619,6 +631,12 @@ def main():
         leak_jitter_fraction=args.leak_jitter_fraction,
         noise_rate_cov_decades=args.noise_rate_cov_decades,
         refractory_period_s=args.refractory_period,
+        iebcs_latency_jitter_model=iebcs_latency_jitter_model,
+        iebcs_latency_mean_us=iebcs_latency_mean_us,
+        iebcs_latency_jitter_us=iebcs_latency_jitter_us,
+        iebcs_resample_thresholds_on_event=iebcs_resample_thresholds_on_event,
+        v2ce_nonuniform_burst_timestamps=v2ce_nonuniform_burst_timestamps,
+        v2ce_burst_timestamps_mode=v2ce_burst_timestamps_mode,
         seed=effective_dvs_seed,
         output_folder=output_folder, dvs_h5=dvs_h5, dvs_aedat2=dvs_aedat2, dvs_aedat4 = dvs_aedat4,
         dvs_text=dvs_text, show_dvs_model_state=args.show_dvs_model_state,

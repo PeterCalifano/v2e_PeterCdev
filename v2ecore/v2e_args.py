@@ -199,6 +199,35 @@ def v2e_args(parser):
              "triggered less than refractory_period ago."
              "Set to 0 to disable this feature.")
     modelGroup.add_argument(
+        "--iebcs_latency_jitter_model", default=False, type=str2bool,
+        const=True, nargs='?',
+        help="Enable IEBCS-inspired event timestamp latency + jitter model "
+             "(disabled by default to preserve standard v2e behavior).")
+    modelGroup.add_argument(
+        "--iebcs_latency_mean_us", type=float, default=100.0,
+        help="Mean event latency in microseconds for "
+             "--iebcs_latency_jitter_model.")
+    modelGroup.add_argument(
+        "--iebcs_latency_jitter_us", type=float, default=30.0,
+        help="Std-dev of event timestamp jitter in microseconds for "
+             "--iebcs_latency_jitter_model.")
+    modelGroup.add_argument(
+        "--iebcs_resample_thresholds_on_event", default=False, type=str2bool,
+        const=True, nargs='?',
+        help="Enable IEBCS-inspired threshold reset noise: resample ON/OFF "
+             "thresholds for pixels that emitted signal events "
+             "(disabled by default).")
+    modelGroup.add_argument(
+        "--v2ce_nonuniform_burst_timestamps", default=False, type=str2bool,
+        const=True, nargs='?',
+        help="Enable V2CE-inspired non-uniform sub-frame timestamp placement "
+             "for multi-event bursts (disabled by default).")
+    modelGroup.add_argument(
+        "--v2ce_burst_timestamps_mode", type=str, default="random",
+        choices=["random", "slope"],
+        help="Timestamp distribution mode when "
+             "--v2ce_nonuniform_burst_timestamps is enabled.")
+    modelGroup.add_argument(
         "--dvs_emulator_seed", type=int, default=0,
         help="Set to an integer >0 to use a fixed random seed."
              " Default is 0: v2e auto-generates a random positive seed each run.")

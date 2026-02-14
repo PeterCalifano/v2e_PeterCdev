@@ -347,3 +347,60 @@ def test_main_logs_and_passes_auto_generated_seed(monkeypatch: pytest.MonkeyPatc
 
     assert captured_seed["value"] == 54321
     assert "Using DVS emulator seed: 54321 (auto-generated)" in caplog.text
+
+
+def test_main_passes_iebcs_and_v2ce_flags_to_emulator(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    v2e_module = _Import_local_v2e_module()
+
+    class StopAfterCapture(RuntimeError):
+        pass
+
+    captured_kwargs: dict[str, object] = {}
+
+    class FakeEventEmulator:
+        def __init__(self, *args, **kwargs):
+            captured_kwargs.update(kwargs)
+            raise StopAfterCapture("kwargs captured")
+
+    input_folder = tmp_path / "input_frames_feature_flags"
+    input_folder.mkdir()
+    _Write_test_image(input_folder / "00000000.png", pixel_value=10)
+    _Write_test_image(input_folder / "00000001.png", pixel_value=220)
+
+    output_folder = tmp_path / "output_feature_flags"
+    args = _Build_v2e_args([
+        "--input", str(input_folder),
+        "--input_frame_rate", "30",
+        "--output_folder", str(output_folder),
+        "--unique_output_folder", "false",
+        "--overwrite",
+        "--disable_slomo",
+        "--skip_video_output",
+        "--no_preview",
+        "--output_width", "6",
+        "--output_height", "6",
+        "--dvs_emulator_seed", "123",
+        "--iebcs_latency_jitter_model", "true",
+        "--iebcs_latency_mean_us", "210",
+        "--iebcs_latency_jitter_us", "11",
+        "--iebcs_resample_thresholds_on_event", "true",
+        "--v2ce_nonuniform_burst_timestamps", "true",
+        "--v2ce_burst_timestamps_mode", "slope",
+    ])
+
+    monkeypatch.setattr(v2e_module, "EventEmulator", FakeEventEmulator)
+    monkeypatch.setattr(v2e_module, "Gooey", lambda *args, **kwargs: (lambda: None), raising=False)
+    monkeypatch.setattr(v2e_module, "get_args", lambda: (args, [], "v2e test"))
+    monkeypatch.setattr(v2e_module, "inputVideoFileDialog", lambda: str(input_folder))
+    monkeypatch.setattr(v2e_module.desktop, "open", lambda *_args, **_kwargs: None)
+
+    with pytest.raises(StopAfterCapture):
+        v2e_module.main()
+
+    assert captured_kwargs["seed"] == 123
+    assert captured_kwargs["iebcs_latency_jitter_model"] is True
+    assert captured_kwargs["iebcs_latency_mean_us"] == 210.0
+    assert captured_kwargs["iebcs_latency_jitter_us"] == 11.0
+    assert captured_kwargs["iebcs_resample_thresholds_on_event"] is True
+    assert captured_kwargs["v2ce_nonuniform_burst_timestamps"] is True
+    assert captured_kwargs["v2ce_burst_timestamps_mode"] == "slope"
