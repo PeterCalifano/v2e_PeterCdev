@@ -127,6 +127,8 @@ to run the example below.
   [`docs/development_core.md`](docs/development_core.md)
 + Event-model math to code map (`#KEY` tags):
   [`docs/core_model_mapping.md`](docs/core_model_mapping.md)
++ Error-model extension map (IEBCS + V2CE-inspired):
+  [`docs/README_error_models_extensions.md`](docs/README_error_models_extensions.md)
 + Core module overview:
   [`v2ecore/README.md`](v2ecore/README.md)
 + Fast sanity tests:
