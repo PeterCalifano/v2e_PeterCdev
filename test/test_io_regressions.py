@@ -1,5 +1,6 @@
 import argparse
 import importlib
+import importlib.util
 import logging
 from pathlib import Path
 
@@ -28,10 +29,22 @@ def _Build_v2e_args(argument_list: list[str]):
     return parser.parse_args(argument_list)
 
 
+def _Import_local_v2e_module():
+    pytest.importorskip("torch")
+    pytest.importorskip("h5py")
+    local_v2e_path = Path(__file__).resolve().parents[1] / "v2e.py"
+    spec = importlib.util.spec_from_file_location(
+        "v2e_local_under_test", str(local_v2e_path))
+    assert spec is not None and spec.loader is not None
+    v2e_local_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(v2e_local_module)
+    return v2e_local_module
+
+
 def test_set_output_folder_rejects_output_in_place_without_input_path():
     with pytest.raises(ValueError, match="output_in_place=True requires a real input file or input folder path"):
         set_output_folder(
-            output_folder="v2e-output",
+            output_folder=None,
             input_file=None,
             unique_output_folder=True,
             overwrite=False,
@@ -105,7 +118,7 @@ def test_read_aedat_txt_events_uses_modern_pandas_api(monkeypatch: pytest.Monkey
 
 
 def test_crop_validation_rejects_invalid_crop(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    v2e_module = pytest.importorskip("v2e")
+    v2e_module = _Import_local_v2e_module()
 
     class QuitCalled(RuntimeError):
         pass
@@ -135,6 +148,7 @@ def test_crop_validation_rejects_invalid_crop(monkeypatch: pytest.MonkeyPatch, t
 
     monkeypatch.setattr(v2e_module, "Gooey", lambda *args, **kwargs: (lambda: None), raising=False)
     monkeypatch.setattr(v2e_module, "get_args", lambda: (args, [], "v2e test"))
+    monkeypatch.setattr(v2e_module, "inputVideoFileDialog", lambda: str(input_folder))
     monkeypatch.setattr(v2e_module.desktop, "open", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(v2e_module, "v2e_quit", Raise_quit)
 
@@ -143,7 +157,7 @@ def test_crop_validation_rejects_invalid_crop(monkeypatch: pytest.MonkeyPatch, t
 
 
 def test_crop_validation_accepts_valid_crop(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    v2e_module = pytest.importorskip("v2e")
+    v2e_module = _Import_local_v2e_module()
 
     class QuitCalled(RuntimeError):
         pass
@@ -173,6 +187,7 @@ def test_crop_validation_accepts_valid_crop(monkeypatch: pytest.MonkeyPatch, tmp
 
     monkeypatch.setattr(v2e_module, "Gooey", lambda *args, **kwargs: (lambda: None), raising=False)
     monkeypatch.setattr(v2e_module, "get_args", lambda: (args, [], "v2e test"))
+    monkeypatch.setattr(v2e_module, "inputVideoFileDialog", lambda: str(input_folder))
     monkeypatch.setattr(v2e_module.desktop, "open", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(v2e_module, "v2e_quit", Raise_quit)
 
@@ -181,7 +196,7 @@ def test_crop_validation_accepts_valid_crop(monkeypatch: pytest.MonkeyPatch, tmp
 
 
 def test_main_rejects_output_in_place_for_synthetic_input(monkeypatch: pytest.MonkeyPatch):
-    v2e_module = pytest.importorskip("v2e")
+    v2e_module = _Import_local_v2e_module()
 
     class QuitCalled(RuntimeError):
         pass
