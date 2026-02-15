@@ -108,6 +108,16 @@ def get_args():
     return (args_namespace,other_args,command_line)
 
 
+def resolve_dvs_emulator_seed(requested_seed: int) -> tuple[int, bool]:
+    """Return effective seed and whether it was auto-generated."""
+    if requested_seed > 0:
+        return requested_seed, False
+    if requested_seed == 0:
+        auto_seed = int(np.random.randint(1, 2**31))
+        return auto_seed, True
+    raise ValueError(f'dvs_emulator_seed must be >=0, got {requested_seed}')
+
+
 def main():
 
     # %% Arguments and options handling
@@ -128,14 +138,19 @@ def main():
     # Set input file path
     input_file: str | None = args.input
     synthetic_input: str | None = args.synthetic_input
+    input_filepath: str | None = None
 
     if synthetic_input is not None and input_file is not None:
         logger.error(f'Both input_filepath {input_file} and synthetic_input {synthetic_input} are specified - you can only specify one of them')
         v2e_quit(1)
 
+    if synthetic_input is not None and args.output_in_place:
+        logger.error('--output_in_place cannot be used with --synthetic_input because there is no source file or folder path')
+        v2e_quit(1)
+
     if synthetic_input is None and input_file is None:
         try:
-            input_filepath:str  = inputVideoFileDialog()
+            input_filepath = inputVideoFileDialog()
             if input_filepath is None:
                 logger.info('no file selected, quitting')
                 v2e_quit()
@@ -143,7 +158,7 @@ def main():
             logger.error(f'no input file specified and cannot show input file dialog; are you running without graphical display? ({e})')
             v2e_quit(1)
     elif input_file is not None:
-        input_filepath: str = input_file
+        input_filepath = input_file
 
     # Set output folder
     output_folder = set_output_folder(
@@ -151,7 +166,7 @@ def main():
         input_filepath,
         args.unique_output_folder if not args.overwrite else False,
         args.overwrite,
-        args.output_in_place if (not synthetic_input) else False,
+        args.output_in_place,
         logger)
 
     # Set output width and height based on the arguments
@@ -584,6 +599,18 @@ def main():
     if scidvs:
         logger.info('Simulating SCIDVS pixel')
 
+    try:
+        effective_dvs_seed, auto_seeded = resolve_dvs_emulator_seed(args.dvs_emulator_seed)
+    except ValueError as e:
+        logger.error(str(e))
+        v2e_quit(1)
+        return
+
+    if auto_seeded:
+        logger.info(f'Using DVS emulator seed: {effective_dvs_seed} (auto-generated)')
+    else:
+        logger.info(f'Using DVS emulator seed: {effective_dvs_seed}')
+
     ### Setup DVS emulator
     emulator = EventEmulator(
         pos_thres=pos_thres, neg_thres=neg_thres,
@@ -592,7 +619,7 @@ def main():
         leak_jitter_fraction=args.leak_jitter_fraction,
         noise_rate_cov_decades=args.noise_rate_cov_decades,
         refractory_period_s=args.refractory_period,
-        seed=args.dvs_emulator_seed,
+        seed=effective_dvs_seed,
         output_folder=output_folder, dvs_h5=dvs_h5, dvs_aedat2=dvs_aedat2, dvs_aedat4 = dvs_aedat4,
         dvs_text=dvs_text, show_dvs_model_state=args.show_dvs_model_state,
         save_dvs_model_state=args.save_dvs_model_state,
@@ -621,9 +648,21 @@ def main():
         area_dimension=area_dimension,
         avi_frame_rate=args.avi_frame_rate)
 
+    def flush_event_batch(
+            event_chunks: list[np.ndarray]) -> np.ndarray | None:
+        """Concatenate buffered event chunks once and clear the buffer."""
+        if len(event_chunks) == 0:
+            return None
+        if len(event_chunks) == 1:
+            batched_events = event_chunks[0]
+        else:
+            batched_events = np.concatenate(event_chunks, axis=0)
+        event_chunks.clear()
+        return batched_events
+
     if synthetic_input_next_frame_method is not None:
-        # array to batch events for rendering to DVS frames
-        events = np.zeros((0, 4), dtype=np.float32)
+        # buffer chunks and concatenate once at flush to avoid O(n^2) np.append growth
+        event_chunks: list[np.ndarray] = []
         (fr, fr_time) = synthetic_input_instance.next_frame()
         num_frames+=1
         i = 0
@@ -636,19 +675,20 @@ def main():
                     i += 1
                     if newEvents is not None and newEvents.shape[0] > 0 \
                             and not args.skip_video_output:
-                        events = np.append(events, newEvents, axis=0)
-                        events = np.array(events)
+                        event_chunks.append(newEvents)
                         if i % batch_size == 0:
+                            batched_events = flush_event_batch(event_chunks)
                             eventRenderer.render_events_to_frames(
-                                events, height=output_height,
+                                batched_events, height=output_height,
                                 width=output_width)
-                            events = np.zeros((0, 4), dtype=np.float32)
                     (fr, fr_time) = synthetic_input_instance.next_frame()
                     num_frames+=1
             # process leftover events
-            if len(events) > 0 and not args.skip_video_output:
+            batched_events = flush_event_batch(event_chunks)
+            if batched_events is not None and not args.skip_video_output:
                 eventRenderer.render_events_to_frames(
-                    events, height=output_height, width=output_width)
+                    batched_events, height=output_height,
+                    width=output_width)
     else:  
         # video file folder or (avi/mp4) file input
         # timestamps of DVS start at zero and end with
@@ -679,21 +719,27 @@ def main():
             'processing frames {} to {} from video input'.format(
                 start_frame, stop_frame))
 
-        c_l=0
-        c_r=None
-        c_t=0
-        c_b=None
+        crop_left_pixels = 0
+        crop_right_pixels = 0
+        crop_top_pixels = 0
+        crop_bottom_pixels = 0
+        crop_right_slice_end = None
+        crop_bottom_slice_end = None
         if args.crop is not None:
-            c=args.crop
-            if len(c)!=4:
+            crop_values = args.crop
+            if len(crop_values)!=4:
                 logger.error(f'--crop must have 4 elements (you specified --crop={args.crop}')
                 v2e_quit(1)
 
-            c_l=c[0] if c[0] > 0 else 0
-            c_r=-c[1] if c[1]>0 else None
-            c_t=c[2] if c[2]>0 else 0
-            c_b=-c[3] if c[3]>0 else None
-            logger.info(f'cropping video by (left,right,top,bottom)=({c_l},{c_r},{c_t},{c_b})')
+            crop_left_pixels = crop_values[0] if crop_values[0] > 0 else 0
+            crop_right_pixels = crop_values[1] if crop_values[1] > 0 else 0
+            crop_top_pixels = crop_values[2] if crop_values[2] > 0 else 0
+            crop_bottom_pixels = crop_values[3] if crop_values[3] > 0 else 0
+            crop_right_slice_end = -crop_right_pixels if crop_right_pixels > 0 else None
+            crop_bottom_slice_end = -crop_bottom_pixels if crop_bottom_pixels > 0 else None
+            logger.info(
+                f'cropping video by (left,right,top,bottom)='
+                f'({crop_left_pixels},{crop_right_pixels},{crop_top_pixels},{crop_bottom_pixels})')
 
 
         with TemporaryDirectory() as source_frames_dir:
@@ -748,14 +794,21 @@ def main():
 
                 if args.crop is not None:
                     # crop the frame, indices are y,x, UL is 0,0
-                    if c_l+(c_r if c_r is not None else 0)>=inputWidth:
-                        logger.error(f'left {c_l} + right crop {c_r} is larger than image width {inputWidth}')
+                    if crop_left_pixels + crop_right_pixels >= inputWidth:
+                        logger.error(
+                            f'left crop {crop_left_pixels} + right crop '
+                            f'{crop_right_pixels} is larger than image width {inputWidth}')
                         v2e_quit(1)
-                    if c_t+(c_b if c_b is not None else 0)>=inputHeight:
-                        logger.error(f'top {c_t} + bottom crop {c_b} is larger than image height {inputHeight}')
+                    if crop_top_pixels + crop_bottom_pixels >= inputHeight:
+                        logger.error(
+                            f'top crop {crop_top_pixels} + bottom crop '
+                            f'{crop_bottom_pixels} is larger than image height {inputHeight}')
                         v2e_quit(1)
 
-                    inputVideoFrame= inputVideoFrame[c_t:c_b, c_l:c_r] # https://stackoverflow.com/questions/15589517/how-to-crop-an-image-in-opencv-using-python
+                    inputVideoFrame = inputVideoFrame[
+                        crop_top_pixels:crop_bottom_slice_end,
+                        crop_left_pixels:crop_right_slice_end
+                    ]  # https://stackoverflow.com/questions/15589517/how-to-crop-an-image-in-opencv-using-python
 
                 if output_height and output_width and \
                         (inputHeight != output_height or
@@ -872,8 +925,8 @@ def main():
                     # Delete slomo instance
                     del slomo
 
-                # array to batch events for rendering to DVS frames
-                events = np.zeros((0, 4), dtype=np.float32) # Array to store events [x,y,t,p]
+                # Buffer chunks and concatenate only when flushed.
+                event_chunks: list[np.ndarray] = []
 
                 logger.info(
                     f'*** Stage 3/3: emulating DVS events from '
@@ -899,23 +952,22 @@ def main():
 
 
                             if newEvents is not None and newEvents.shape[0] > 0 and not args.skip_video_output:
-
-                                # Append new events to the batch if any (dynamically allocated)
-                                events = np.append(events, newEvents, axis=0)
-                                events = np.array(events)
+                                event_chunks.append(newEvents)
                                 
                                 if i % batch_size == 0:
+                                    batched_events = flush_event_batch(
+                                        event_chunks)
                                     # Render events to frames if batch size is reached
                                     eventRenderer.render_events_to_frames(
-                                        events, height=output_height,
+                                        batched_events, height=output_height,
                                         width=output_width)
-                                    # Reset events batch # DEVNOTE this means that events are only saved in correspondence of specific frames
-                                    events = np.zeros((0, 4), dtype=np.float32)
 
                     # Process leftover events
-                    if len(events) > 0 and not args.skip_video_output:
+                    batched_events = flush_event_batch(event_chunks)
+                    if batched_events is not None and not args.skip_video_output:
                         eventRenderer.render_events_to_frames(
-                            events, height=output_height, width=output_width)
+                            batched_events, height=output_height,
+                            width=output_width)
 
     # Clean up
     eventRenderer.cleanup()
@@ -970,7 +1022,7 @@ def main():
             logger.warning(
                 '{}: could not open {} in desktop'.format(e, output_folder))
     logger.info(timestr)
-    sys.exit(0)
+    return
 
 
 if __name__ == "__main__":

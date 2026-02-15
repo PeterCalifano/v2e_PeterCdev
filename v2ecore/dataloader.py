@@ -91,10 +91,10 @@ class Frames(data.Dataset):
         fmt_str = 'Dataset ' + self.__class__.__name__ + '\n'
         fmt_str += '    Number of datapoints: {}\n'.format(self.__len__())
         tmp = '    Transforms (if any): '
+        transform_repr = "None" if self.transform is None else self.transform.__repr__()
         fmt_str += '{0}{1}\n'.format(
             tmp,
-            self.transform.__repr__().replace('\n',
-                                              '\n' + ' ' * len(tmp)))
+            transform_repr.replace('\n', '\n' + ' ' * len(tmp)))
         return fmt_str
 
 
@@ -171,8 +171,8 @@ class FramesDirectory(data.Dataset):
         fmt_str = 'Dataset ' + self.__class__.__name__ + '\n'
         fmt_str += '    Number of datapoints: {}\n'.format(self.__len__())
         tmp = '    Transforms (if any): '
+        transform_repr = "None" if self.transform is None else self.transform.__repr__()
         fmt_str += '{0}{1}\n'.format(
             tmp,
-            self.transform.__repr__().replace('\n',
-                                              '\n' + ' ' * len(tmp)))
+            transform_repr.replace('\n', '\n' + ' ' * len(tmp)))
         return fmt_str

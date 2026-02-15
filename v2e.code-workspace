@@ -16,13 +16,34 @@
 			"path": "../../ML-repos/pyTorchAutoForge"
 		},
 		{
-			"path": "../../ML-repos/Super-SloMo_PeterCdev"
-		},
-		{
 			"path": "../../../../../media/peterc/Main/linux_data/datasets"
 		},
 		{
 			"path": "../../rendering-sw/DatasetGeneratorLib"
+		},
+		{
+			"path": "../EventDataGenerationLib"
+		},
+		{
+			"path": "../SuperEvent"
+		},
+		{
+			"path": "../DVS-Voltmeter"
+		},
+		{
+			"path": "../MC-EBCS"
+		},
+		{
+			"path": "../rpg_vid2e"
+		},
+		{
+			"path": "../IEBCS"
+		},
+		{
+			"path": "../V2CE-Toolbox"
+		},
+		{
+			"path": "../trajectory-to-events"
 		}
 	],
 	"settings": {

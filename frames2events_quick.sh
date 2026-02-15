@@ -2,18 +2,21 @@
 # Export if running headless 
 # TODO verify it works
 # export QT_QPA_PLATFORM=offscreen
-set -Eeuo pipefail
+set -Eeo pipefail
 
 function usage() {
-    echo -e "Usage: $0 required args [optional args] \nValid arguments: \n -i|--input_folder input_folder -f|--framerate_input input_framerate \n [-o|--output output_folder] \n [-t|--threshold event_threshold] \n [-r|--resolution_output width,height] \n [-c|--cut_off frequency] \n [-d|--deviation_thr sigma_threshold] \n [-b|--batch_size batch_size] \n [-g|--grid_time_resolution timestamp_resolution] \n [-a|--auto_timestamp] \n [-s|--show_video] \n [-l|--last_time last_time_value] \n"
+    echo -e "Usage: $0 required args [optional args] \nValid arguments: \n -i|--input_folder input_folder -f|--framerate_input input_framerate \n [-o|--output output_folder] \n [-t|--threshold event_threshold] \n [-r|--resolution_output width,height] \n [-c|--cut_off frequency] \n [-d|--deviation_thr sigma_threshold] \n [-b|--batch_size batch_size] \n [-g|--grid_time_resolution timestamp_resolution] \n [-a|--auto_timestamp] \n [-s|--show_video] \n [--disable_slomo] \n [-l|--last_time last_time_value] \n"
     exit 1
 }
 
 # Parse options using getopt for short and long options
-TEMP=$(getopt -o a,i:,f:,o:,t:,b:,r:,c:,d:,g:,h,s,l: --long input_folder:,framerate_input:,output_folder:,threshold:,batch_size:,resolution_output:,cut_off:,deviation_thr:,grid_time_resolution:,auto_timestamp,help,show_video,last_time: -n "$0" -- "$@")
+TEMP=$(getopt -o a,i:,f:,o:,t:,b:,r:,c:,d:,g:,h,s,l: --long input_folder:,framerate_input:,output_folder:,threshold:,batch_size:,resolution_output:,cut_off:,deviation_thr:,grid_time_resolution:,auto_timestamp,help,show_video,disable_slomo,last_time: -n "$0" -- "$@")
 if [ $? != 0 ]; then
     usage
 fi
+
+disable_slomo_flag=false
+output_resolution=""
 
 eval set -- "$TEMP"
 while true; do
@@ -59,6 +62,10 @@ while true; do
             shift 2
             ;;
         -s|--show_video)
+            shift 1
+            ;;
+        --disable_slomo)
+            disable_slomo_flag=true
             shift 1
             ;;
         -h|--help)
@@ -133,6 +140,13 @@ if [ -z "$v2e_location" ]; then
 fi
 
 ### PRINT INFO
+CONDA_BASE="${CONDA_BASE:-$(conda info --base 2>/dev/null)}"
+if [ -z "$CONDA_BASE" ] || [ ! -f "$CONDA_BASE/etc/profile.d/conda.sh" ]; then
+    echo "Error: could not locate conda.sh; ensure conda is installed and available."
+    exit 1
+fi
+# shellcheck source=/dev/null
+. "$CONDA_BASE/etc/profile.d/conda.sh"
 conda activate v2e
 echo "Using conda environment: $(conda info --envs | grep '*' | awk '{print $1}')"
 
@@ -144,6 +158,10 @@ echo "From_slomo_output: $from_slomo_output"
 echo "Input framerate: $framerate_input" fps
 echo "Event threshold: $event_thr"
 echo "Batch size: $batch_size_slomo"
+disable_slomo=""
+if [ "$disable_slomo_flag" = true ]; then
+    disable_slomo="--disable_slomo"
+fi
 
 if [ -n "$output_resolution" ]; then
     output_resolution_args="--output_width $res_w --output_height $res_h"
@@ -195,8 +213,6 @@ if [ "$from_slomo_output" = true ]; then
     disable_slomo="--disable_slomo"
     # Set overwrite to true
     overwrite_output_folder_option="--overwrite"
-else
-    disable_slomo=""
 fi
 
 # Determine video args based on the presence of the --show_video flag
@@ -235,7 +251,7 @@ python "$v2e_location" -i $input_folder \
         --crop '0, 0, 0, 0' \
         --dvs_exposure duration 0.01 \
         --input_frame_rate $framerate_input \
-        --auto_timestamp $auto_timestamp $timestamp_resolution \
+        --auto_timestamp_resolution $auto_timestamp $timestamp_resolution \
         --no_preview \
         --pos_thres $event_thr \
         --neg_thres $event_thr \

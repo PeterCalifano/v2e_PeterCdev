@@ -48,6 +48,9 @@ class ImageFolderReader(object):
         self.current_frame_idx = 0
 
         self.num_frames = len(self.image_file_list)
+        if self.num_frames == 0:
+            raise FileNotFoundError(
+                f'input folder "{self.image_folder_path}" does not contain any image files')
 
         frame = cv2.imread(self.image_file_list[0])
         if frame is None:
@@ -62,12 +65,15 @@ class ImageFolderReader(object):
 
         :param skip: skip the frame
 
-        :returns: always True
+        :returns: tuple(bool, np.ndarray | None), like cv2.VideoCapture.read()
         """
+        if self.current_frame_idx >= self.num_frames:
+            return False, None
+
         if not skip:
             frame = cv2.imread(self.image_file_list[self.current_frame_idx])
         else:
-            frame=None
+            frame = None
         self.current_frame_idx += 1
 
         # To match with OpenCV API
@@ -133,7 +139,7 @@ def make_output_folder(output_folder_base, suffix_counter,overwrite, unique_outp
 
 
 def set_output_folder(output_folder,
-                      input_file,
+                      input_file: str | None,
                       unique_output_folder,
                       overwrite,
                       output_in_place,
@@ -153,6 +159,8 @@ def set_output_folder(output_folder,
         raise ValueError(f'both output_folder={output_folder} and output_in_place={output_in_place} cannot be set true at same time')
 
     if output_in_place:
+        if input_file is None:
+            raise ValueError('output_in_place=True requires a real input file or input folder path')
         ip=Path(input_file)
         if ip.is_file():
             output_folder=ip.parent.absolute()
@@ -364,17 +372,23 @@ def read_aedat_txt_events(fname: str):
     """
     import pandas as pd
     import numpy as np
-    dat = pd.read_table(
-        fname,
+    read_table_args = dict(
         sep=' ',  # field separator
         comment='#',  # comment
         skipinitialspace=False,
         skip_blank_lines=True,
-        error_bad_lines=False,
-        warn_bad_lines=True,
         encoding='utf-8',
         names=['t', 'x', 'y', 'p'],
-        dtype={'a': np.float64, 'b': np.int32, 'c': np.int32, 'd': np.int32})
+        dtype={'t': np.float64, 'x': np.int32, 'y': np.int32, 'p': np.int32},
+    )
+    try:
+        dat = pd.read_table(fname, on_bad_lines='warn', **read_table_args)
+    except TypeError:
+        dat = pd.read_table(
+            fname,
+            error_bad_lines=False,
+            warn_bad_lines=True,
+            **read_table_args)
 
     # array[N,4] with each row having ts, x, y, pol.
     # ts is in float seconds. pol is 0,1

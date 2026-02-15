@@ -1,15 +1,10 @@
 import numpy as np
 import logging
 
-import torch
 from engineering_notation import EngNumber  # only from pip
-import atexit
-import struct
 
 # check https://gitlab.com/inivation/dv/dv-processing to install dv-processing-python
 import dv_processing as dv
-
-from v2ecore.v2e_utils import v2e_quit
 
 logger = logging.getLogger(__name__)
 
@@ -31,12 +26,11 @@ class AEDat4Output:
         self.flipx = False 
         self.sizex = output_width
         self.sizey = output_height
-         
-        self.store = dv.EventStore()
 
-        resolution = (640, 480)
+        camera_resolution = (output_width, output_height)
         # Event only configuration
-        config = dv.io.MonoCameraWriter.EventOnlyConfig("DVXplorer_sample", resolution)
+        config = dv.io.MonoCameraWriter.EventOnlyConfig(
+            "DVXplorer_sample", camera_resolution)
 
         # Create the writer instance, it will only have a single event output stream.
         self.writer = dv.io.MonoCameraWriter(filepath, config)
@@ -53,7 +47,6 @@ class AEDat4Output:
                                EngNumber(self.numOffEvents),
                                ))
             
-            self.writer.writeEvents(self.store)
             self.writer = None
 
     def appendEvents(self, events: np.ndarray, signnoise_label:np.ndarray=None ):
@@ -77,25 +70,32 @@ class AEDat4Output:
 
         if len(events) == 0:
             return
-        n = events.shape[0]
+        event_count = events.shape[0]
+        event_store_batch = dv.EventStore()
         for event in events:
-            t = int(event[0] * 1e6)
-            x = int(event[1])
-            if self.flipx: x = (self.sizex - 1) - x  # 0 goes to sizex-1
-            y = int(event[2])
-            if self.flipy: y = (self.sizey - 1) - y
-            p = int((event[3] + 1) / 2) # 0=off, 1=on
+            event_timestamp_us = int(event[0] * 1e6)
+            event_x = int(event[1])
+            if self.flipx:
+                event_x = (self.sizex - 1) - event_x  # 0 goes to sizex-1
+            event_y = int(event[2])
+            if self.flipy:
+                event_y = (self.sizey - 1) - event_y
+            event_polarity = int((event[3] + 1) / 2) # 0=off, 1=on
 
             try: 
-                 self.store.push_back(t, x, y, p)
+                event_store_batch.push_back(
+                    event_timestamp_us, event_x, event_y, event_polarity)
             except RuntimeError as e:
-                 logger.warning('caught exception event {} to store'.format(e))
+                logger.warning('caught exception event {} to store'.format(e))
 
-            if p==1: self.numOnEvents+=1
-            else: self.numOffEvents+=1
+            if event_polarity == 1:
+                self.numOnEvents += 1
+            else:
+                self.numOffEvents += 1
             self.numEventsWritten += 1
-        
-        # logger.info('wrote {} events'.format(n))
+
+        if event_count > 0:
+            self.writer.writeEvents(event_store_batch)
 
 
 if __name__ == '__main__':
