@@ -8,7 +8,7 @@ import cv2
 import glob
 import easygui
 from tkinter import filedialog
-from numba import njit
+from numba import njit, prange
 from engineering_notation import EngNumber as eng
 from pathlib import Path
 
@@ -500,3 +500,46 @@ def hist2d_numba_seq(tracks, bins, ranges):
             H[int(i), int(j)] += 1
 
     return H
+
+
+# Parallel histogram using thread-local partial histograms to avoid
+# race conditions on H[i,j] += 1.  Faster than hist2d_numba_seq when
+# the number of tracks exceeds ~50k.
+_HIST2D_PARALLEL_N_CHUNKS = 8
+
+
+@njit(nogil=True, parallel=True)
+def hist2d_numba_parallel(tracks, bins, ranges):
+    n_tracks = tracks.shape[1]
+    delta = 1.0 / ((ranges[:, 1] - ranges[:, 0]) / bins)
+    n_chunks = _HIST2D_PARALLEL_N_CHUNKS
+    chunk_size = (n_tracks + n_chunks - 1) // n_chunks
+
+    partials = np.zeros((n_chunks, bins[0], bins[1]), dtype=np.float64)
+
+    for c in prange(n_chunks):
+        start = c * chunk_size
+        end = min(start + chunk_size, n_tracks)
+        for t in range(start, end):
+            i = (tracks[0, t] - ranges[0, 0]) * delta[0]
+            j = (tracks[1, t] - ranges[1, 0]) * delta[1]
+            if 0 <= i < bins[0] and 0 <= j < bins[1]:
+                partials[c, int(i), int(j)] += 1
+
+    H = np.zeros((bins[0], bins[1]), dtype=np.float64)
+    for c in range(n_chunks):
+        H += partials[c]
+    return H
+
+
+def hist2d_numba(tracks, bins, ranges):
+    """Auto-select sequential or parallel histogram based on track count.
+
+    The parallel version uses thread-local partial histograms which only
+    amortise their overhead for very large track counts (>1M) and require
+    a functional Numba threading backend (TBB >= 2021.6 or OpenMP).
+    For typical DVS frame sizes the sequential version is fastest.
+    """
+    if tracks.shape[1] > 1_000_000:
+        return hist2d_numba_parallel(tracks, bins, ranges)
+    return hist2d_numba_seq(tracks, bins, ranges)

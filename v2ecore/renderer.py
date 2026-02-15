@@ -11,7 +11,7 @@ from numba import jit, njit
 
 from v2ecore.emulator import EventEmulator
 from v2ecore.v2e_utils import video_writer, read_image, checkAddSuffix, v2e_quit
-from v2ecore.v2e_utils import hist2d_numba_seq
+from v2ecore.v2e_utils import hist2d_numba
 
 logger = logging.getLogger(__name__)
 
@@ -406,12 +406,12 @@ class EventRenderer(object):
         pol_on = (events[:, 3] == 1)
         pol_off = np.logical_not(pol_on)
 
-        img_on = hist2d_numba_seq(
+        img_on = hist2d_numba(
             np.array([events[pol_on, 2], events[pol_on, 1]],
                      dtype=np.float64),
             bins=np.asarray([self.height, self.width], dtype=np.int64),
             ranges=histrange)
-        img_off = hist2d_numba_seq(
+        img_off = hist2d_numba(
             np.array([events[pol_off, 2], events[pol_off, 1]],
                      dtype=np.float64),
             bins=np.asarray([self.height, self.width], dtype=np.int64),

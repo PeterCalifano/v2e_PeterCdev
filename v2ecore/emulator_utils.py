@@ -25,7 +25,11 @@ def lin_log(x, threshold=20):
 
     Returns: the log value
     """
-    # converting x into np.float64.
+    # TODO (TBC): Performance optimization — converting to float64 here is
+    # expensive (~1.5-2x slower). Using float32 throughout would avoid the
+    # double() cast and final .float() cast. However, the rounding logic
+    # below relies on float64 precision to prevent numerical drift that
+    # suppresses OFF events. Validate against regression tests before changing.
     if x.dtype is not torch.float64:  # note float64 to get rounding to work
         x = x.double()
 
@@ -112,12 +116,17 @@ class LowPassFilter:
                         'Supressing further warnings about inaccurate IIR lowpass filtering; check timestamp resolution and DVS photoreceptor cutoff frequency')
 
             eps = torch.clamp(eps, max=1.0)
-        else:
-            eps = torch.tensor(delta_over_tau, dtype=torch.float32, device=log_new_frame.device) if isinstance(
-                delta_over_tau, float) else delta_over_tau
 
-        # KEY[E-LPF-IIR]: first-order IIR update for filtered log intensity Llp.
-        return lp_log_frame + eps * (log_new_frame - lp_log_frame)
+            # KEY[E-LPF-IIR]: first-order IIR update for filtered log intensity Llp.
+            # Non-in-place expression: PyTorch fuses the element-wise ops into
+            # fewer CUDA kernels than lerp_ with a tensor weight.
+            return lp_log_frame + eps * (log_new_frame - lp_log_frame)
+        else:
+            # Scalar eps path: lerp_ also accepts scalar weight.
+            # KEY[E-LPF-IIR]: first-order IIR update for filtered log intensity Llp.
+            eps = delta_over_tau
+            lp_log_frame.lerp_(log_new_frame, eps)
+            return lp_log_frame
 
 
 _LOW_PASS_FILTER_CACHE: dict[tuple[float, float | None], LowPassFilter] = {}
