@@ -381,6 +381,10 @@ def test_main_passes_iebcs_and_v2ce_flags_to_emulator(monkeypatch: pytest.Monkey
     _Write_test_image(input_folder / "00000001.png", pixel_value=220)
 
     output_folder = tmp_path / "output_feature_flags"
+    pos_file = tmp_path / "pos.npy"
+    neg_file = tmp_path / "neg.npy"
+    np.save(pos_file, np.array([[0.0, 1.0]], dtype=np.float32))
+    np.save(neg_file, np.array([[0.0, 1.0]], dtype=np.float32))
     args = _Build_v2e_args([
         "--input", str(input_folder),
         "--input_frame_rate", "30",
@@ -397,6 +401,16 @@ def test_main_passes_iebcs_and_v2ce_flags_to_emulator(monkeypatch: pytest.Monkey
         "--iebcs_latency_mean_us", "210",
         "--iebcs_latency_jitter_us", "11",
         "--iebcs_resample_thresholds_on_event", "true",
+        "--iebcs_contrast_latency_model", "true",
+        "--iebcs_latency_tau_us", "320",
+        "--iebcs_latency_clamp_us", "9000",
+        "--iebcs_latency_slope_jitter", "false",
+        "--iebcs_hist_noise_model", "true",
+        "--iebcs_noise_source", "files",
+        "--iebcs_noise_pos_path", str(pos_file),
+        "--iebcs_noise_neg_path", str(neg_file),
+        "--iebcs_refractory_state_coupling", "true",
+        "--iebcs_refractory_us", "700",
         "--v2ce_nonuniform_burst_timestamps", "true",
         "--v2ce_burst_timestamps_mode", "slope",
     ])
@@ -415,6 +429,15 @@ def test_main_passes_iebcs_and_v2ce_flags_to_emulator(monkeypatch: pytest.Monkey
     assert captured_kwargs["iebcs_latency_mean_us"] == 210.0
     assert captured_kwargs["iebcs_latency_jitter_us"] == 11.0
     assert captured_kwargs["iebcs_resample_thresholds_on_event"] is True
+    assert captured_kwargs["iebcs_contrast_latency_model"] is True
+    assert captured_kwargs["iebcs_latency_tau_us"] == 320.0
+    assert captured_kwargs["iebcs_latency_clamp_us"] == 9000.0
+    assert captured_kwargs["iebcs_latency_slope_jitter"] is False
+    assert captured_kwargs["iebcs_hist_noise_model"] is True
+    assert captured_kwargs["iebcs_hist_noise_pos_path"] == str(pos_file)
+    assert captured_kwargs["iebcs_hist_noise_neg_path"] == str(neg_file)
+    assert captured_kwargs["iebcs_refractory_state_coupling"] is True
+    assert captured_kwargs["iebcs_refractory_us"] == 700.0
     assert captured_kwargs["v2ce_nonuniform_burst_timestamps"] is True
     assert captured_kwargs["v2ce_burst_timestamps_mode"] == "slope"
 
@@ -477,3 +500,148 @@ def test_main_scales_large_resolution_even_when_slomo_disabled(monkeypatch: pyte
 
     assert captured_dimensions["output_width"] == 1024
     assert captured_dimensions["output_height"] == 768
+
+
+def test_hist_noise_presets_resolve_correctly():
+    v2e_module = _Import_local_v2e_module()
+    pos, neg = v2e_module.resolve_iebcs_noise_paths(
+        noise_source="preset",
+        noise_preset="161lux",
+        noise_pos_path=None,
+        noise_neg_path=None,
+    )
+    assert pos.endswith("input/iebcs_noise/noise_pos_161lux.npy")
+    assert neg.endswith("input/iebcs_noise/noise_neg_161lux.npy")
+
+
+def test_cli_rejects_invalid_hist_noise_configuration(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    v2e_module = _Import_local_v2e_module()
+
+    class QuitCalled(RuntimeError):
+        pass
+
+    def Raise_quit(code=0):
+        raise QuitCalled(code)
+
+    input_folder = tmp_path / "input_frames_invalid_hist"
+    input_folder.mkdir()
+    _Write_test_image(input_folder / "00000000.png", pixel_value=20)
+    _Write_test_image(input_folder / "00000001.png", pixel_value=25)
+
+    output_folder = tmp_path / "output_invalid_hist"
+    args = _Build_v2e_args([
+        "--input", str(input_folder),
+        "--input_frame_rate", "30",
+        "--output_folder", str(output_folder),
+        "--unique_output_folder", "false",
+        "--overwrite",
+        "--disable_slomo",
+        "--skip_video_output",
+        "--no_preview",
+        "--output_width", "6",
+        "--output_height", "6",
+        "--iebcs_hist_noise_model", "true",
+        "--iebcs_noise_source", "files",
+    ])
+
+    monkeypatch.setattr(v2e_module, "Gooey", lambda *args, **kwargs: (lambda: None), raising=False)
+    monkeypatch.setattr(v2e_module, "get_args", lambda: (args, [], "v2e test"))
+    monkeypatch.setattr(v2e_module, "v2e_quit", Raise_quit)
+
+    with pytest.raises(QuitCalled):
+        v2e_module.main()
+
+
+def test_cli_rejects_missing_preset_hist_noise_files(
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture):
+    v2e_module = _Import_local_v2e_module()
+
+    class QuitCalled(RuntimeError):
+        pass
+
+    def Raise_quit(code=0):
+        raise QuitCalled(code)
+
+    input_folder = tmp_path / "input_frames_missing_preset_hist"
+    input_folder.mkdir()
+    _Write_test_image(input_folder / "00000000.png", pixel_value=20)
+    _Write_test_image(input_folder / "00000001.png", pixel_value=25)
+
+    output_folder = tmp_path / "output_missing_preset_hist"
+    args = _Build_v2e_args([
+        "--input", str(input_folder),
+        "--input_frame_rate", "30",
+        "--output_folder", str(output_folder),
+        "--unique_output_folder", "false",
+        "--overwrite",
+        "--disable_slomo",
+        "--skip_video_output",
+        "--no_preview",
+        "--output_width", "6",
+        "--output_height", "6",
+        "--iebcs_hist_noise_model", "true",
+        "--iebcs_noise_source", "preset",
+        "--iebcs_noise_preset", "161lux",
+    ])
+
+    monkeypatch.setattr(v2e_module, "Gooey", lambda *args, **kwargs: (lambda: None), raising=False)
+    monkeypatch.setattr(v2e_module, "get_args", lambda: (args, [], "v2e test"))
+    monkeypatch.setattr(v2e_module, "v2e_quit", Raise_quit)
+
+    with pytest.raises(QuitCalled):
+        v2e_module.main()
+    assert "IEBCS histogram noise file(s) not found" in caplog.text
+
+
+def test_cli_rejects_negative_latency_tau_or_refractory_values(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    v2e_module = _Import_local_v2e_module()
+
+    class QuitCalled(RuntimeError):
+        pass
+
+    def Raise_quit(code=0):
+        raise QuitCalled(code)
+
+    input_folder = tmp_path / "input_frames_negative_checks"
+    input_folder.mkdir()
+    _Write_test_image(input_folder / "00000000.png", pixel_value=20)
+    _Write_test_image(input_folder / "00000001.png", pixel_value=25)
+
+    output_folder = tmp_path / "output_negative_checks"
+    args = _Build_v2e_args([
+        "--input", str(input_folder),
+        "--input_frame_rate", "30",
+        "--output_folder", str(output_folder),
+        "--unique_output_folder", "false",
+        "--overwrite",
+        "--disable_slomo",
+        "--skip_video_output",
+        "--no_preview",
+        "--output_width", "6",
+        "--output_height", "6",
+        "--iebcs_latency_tau_us", "-1",
+    ])
+    monkeypatch.setattr(v2e_module, "Gooey", lambda *args, **kwargs: (lambda: None), raising=False)
+    monkeypatch.setattr(v2e_module, "get_args", lambda: (args, [], "v2e test"))
+    monkeypatch.setattr(v2e_module, "v2e_quit", Raise_quit)
+    with pytest.raises(QuitCalled):
+        v2e_module.main()
+
+    args2 = _Build_v2e_args([
+        "--input", str(input_folder),
+        "--input_frame_rate", "30",
+        "--output_folder", str(output_folder),
+        "--unique_output_folder", "false",
+        "--overwrite",
+        "--disable_slomo",
+        "--skip_video_output",
+        "--no_preview",
+        "--output_width", "6",
+        "--output_height", "6",
+        "--iebcs_refractory_us", "-1",
+    ])
+    monkeypatch.setattr(v2e_module, "get_args", lambda: (args2, [], "v2e test"))
+    with pytest.raises(QuitCalled):
+        v2e_module.main()

@@ -408,3 +408,308 @@ def test_v2ce_slope_mode_biases_events_later_than_random_mode():
     assert events_random.shape[0] == events_slope.shape[0]
     assert np.all(np.diff(events_slope[:, 0]) >= 0)
     assert float(np.mean(events_slope[:, 0])) > float(np.mean(events_random[:, 0]))
+
+
+def _Write_hist_noise_file(path, bins: int = 8) -> None:
+    cdf = np.zeros((4, bins), dtype=np.float32)
+    step_idx = min(4, bins - 1)
+    cdf[:, step_idx:] = 1.0
+    np.save(path, cdf)
+
+
+def test_contrast_latency_model_increases_delay_for_low_slope_cases():
+    height, width = 24, 24
+    common = dict(
+        pos_thres=0.05,
+        neg_thres=0.05,
+        sigma_thres=0.0,
+        cutoff_hz=0.0,
+        leak_rate_hz=0.0,
+        shot_noise_rate_hz=0.0,
+        photoreceptor_noise=False,
+        refractory_period_s=0.0,
+        iebcs_contrast_latency_model=True,
+        iebcs_latency_mean_us=100.0,
+        iebcs_latency_jitter_us=0.0,
+        iebcs_latency_tau_us=300.0,
+        output_width=width,
+        output_height=height,
+        device="cpu",
+    )
+
+    frame_0 = np.full((height, width), 40, dtype=np.uint8)
+    frame_low = np.full((height, width), 90, dtype=np.uint8)
+    frame_high = np.full((height, width), 255, dtype=np.uint8)
+
+    emu_low = EventEmulator(seed=101, **common)
+    emu_low.generate_events(frame_0, 0.0)
+    events_low = emu_low.generate_events(frame_low, 1.0 / 30.0)
+    emu_low.cleanup()
+
+    emu_high = EventEmulator(seed=101, **common)
+    emu_high.generate_events(frame_0, 0.0)
+    events_high = emu_high.generate_events(frame_high, 1.0 / 30.0)
+    emu_high.cleanup()
+
+    assert events_low is not None and events_low.shape[0] > 0
+    assert events_high is not None and events_high.shape[0] > 0
+    assert float(np.mean(events_low[:, 0])) > float(np.mean(events_high[:, 0]))
+
+
+def test_contrast_latency_model_keeps_monotonic_timestamps():
+    height, width = 20, 20
+    emu = EventEmulator(
+        pos_thres=0.05,
+        neg_thres=0.05,
+        sigma_thres=0.0,
+        cutoff_hz=0.0,
+        leak_rate_hz=0.0,
+        shot_noise_rate_hz=0.0,
+        photoreceptor_noise=False,
+        refractory_period_s=0.0,
+        iebcs_contrast_latency_model=True,
+        iebcs_latency_mean_us=200.0,
+        iebcs_latency_jitter_us=20.0,
+        iebcs_latency_tau_us=300.0,
+        seed=41,
+        output_width=width,
+        output_height=height,
+        device="cpu",
+    )
+    frame_0 = np.zeros((height, width), dtype=np.uint8)
+    frame_1 = np.full((height, width), 255, dtype=np.uint8)
+    emu.generate_events(frame_0, 0.0)
+    events = emu.generate_events(frame_1, 1.0 / 30.0)
+    emu.cleanup()
+    assert events is not None and events.shape[0] > 0
+    assert np.all(np.diff(events[:, 0]) >= 0)
+
+
+def test_hist_noise_model_emits_events_without_signal_changes(tmp_path):
+    pos_path = tmp_path / "pos_hist.npy"
+    neg_path = tmp_path / "neg_hist.npy"
+    _Write_hist_noise_file(pos_path, bins=8)
+    _Write_hist_noise_file(neg_path, bins=8)
+
+    height, width = 12, 12
+    emu = EventEmulator(
+        pos_thres=0.2,
+        neg_thres=0.2,
+        sigma_thres=0.0,
+        cutoff_hz=0.0,
+        leak_rate_hz=0.0,
+        shot_noise_rate_hz=0.0,
+        photoreceptor_noise=False,
+        refractory_period_s=0.0,
+        iebcs_hist_noise_model=True,
+        iebcs_hist_noise_pos_path=str(pos_path),
+        iebcs_hist_noise_neg_path=str(neg_path),
+        seed=5,
+        output_width=width,
+        output_height=height,
+        device="cpu",
+    )
+
+    frame = np.full((height, width), 120, dtype=np.uint8)
+    emu.generate_events(frame, 0.0)
+    events = emu.generate_events(frame, 0.2)
+    emu.cleanup()
+
+    assert events is not None
+    assert events.shape[0] > 0
+    _assert_event_packet_valid(events, height=height, width=width)
+
+
+def test_hist_noise_files_mode_requires_paths():
+    with pytest.raises(ValueError):
+        EventEmulator(
+            iebcs_hist_noise_model=True,
+            iebcs_hist_noise_pos_path=None,
+            iebcs_hist_noise_neg_path=None,
+            output_width=8,
+            output_height=8,
+            device="cpu",
+        )
+
+
+def test_refractory_state_coupling_reduces_illegal_burst_events():
+    height, width = 18, 18
+    frame_0 = np.zeros((height, width), dtype=np.uint8)
+    frame_1 = np.full((height, width), 255, dtype=np.uint8)
+
+    emu_base = EventEmulator(
+        pos_thres=0.05,
+        neg_thres=0.05,
+        sigma_thres=0.0,
+        refractory_period_s=0.0,
+        seed=77,
+        output_width=width,
+        output_height=height,
+        device="cpu",
+    )
+    emu_base.generate_events(frame_0, 0.0)
+    events_base = emu_base.generate_events(frame_1, 1.0 / 30.0)
+    emu_base.cleanup()
+
+    emu_coupled = EventEmulator(
+        pos_thres=0.05,
+        neg_thres=0.05,
+        sigma_thres=0.0,
+        refractory_period_s=0.0,
+        iebcs_refractory_state_coupling=True,
+        iebcs_refractory_us=12000.0,
+        seed=77,
+        output_width=width,
+        output_height=height,
+        device="cpu",
+    )
+    emu_coupled.generate_events(frame_0, 0.0)
+    events_coupled = emu_coupled.generate_events(frame_1, 1.0 / 30.0)
+    emu_coupled.cleanup()
+
+    assert events_base is not None and events_coupled is not None
+    assert events_base.shape[0] > events_coupled.shape[0]
+
+
+def test_refractory_state_coupling_preserves_packet_validity_and_order():
+    height, width = 16, 16
+    emu = EventEmulator(
+        pos_thres=0.05,
+        neg_thres=0.05,
+        sigma_thres=0.0,
+        refractory_period_s=0.0,
+        iebcs_refractory_state_coupling=True,
+        iebcs_refractory_us=10000.0,
+        seed=99,
+        output_width=width,
+        output_height=height,
+        device="cpu",
+    )
+    frame_0 = np.zeros((height, width), dtype=np.uint8)
+    frame_1 = np.full((height, width), 255, dtype=np.uint8)
+    emu.generate_events(frame_0, 0.0)
+    events = emu.generate_events(frame_1, 1.0 / 25.0)
+    emu.cleanup()
+
+    _assert_event_packet_valid(events, height=height, width=width)
+
+
+def test_refractory_state_coupling_with_contrast_latency_model_runs_without_dtype_errors():
+    height, width = 16, 16
+    emu = EventEmulator(
+        pos_thres=0.05,
+        neg_thres=0.05,
+        sigma_thres=0.0,
+        cutoff_hz=0.0,
+        leak_rate_hz=0.0,
+        shot_noise_rate_hz=0.0,
+        photoreceptor_noise=False,
+        refractory_period_s=0.0,
+        iebcs_contrast_latency_model=True,
+        iebcs_latency_mean_us=200.0,
+        iebcs_latency_jitter_us=20.0,
+        iebcs_latency_tau_us=300.0,
+        iebcs_refractory_state_coupling=True,
+        iebcs_refractory_us=500.0,
+        seed=101,
+        output_width=width,
+        output_height=height,
+        device="cpu",
+    )
+    frame_0 = np.zeros((height, width), dtype=np.uint8)
+    frame_1 = np.full((height, width), 255, dtype=np.uint8)
+    emu.generate_events(frame_0, 0.0)
+    events = emu.generate_events(frame_1, 1.0 / 30.0)
+    emu.cleanup()
+
+    assert events is not None and events.shape[0] > 0
+    _assert_event_packet_valid(events, height=height, width=width)
+    assert np.all(np.diff(events[:, 0]) >= 0)
+
+
+def test_new_models_disabled_matches_baseline_behavior():
+    height, width = 14, 14
+    frame_0 = np.zeros((height, width), dtype=np.uint8)
+    frame_1 = np.full((height, width), 180, dtype=np.uint8)
+    common = dict(
+        pos_thres=0.15,
+        neg_thres=0.15,
+        sigma_thres=0.02,
+        cutoff_hz=0.0,
+        leak_rate_hz=0.0,
+        shot_noise_rate_hz=0.0,
+        photoreceptor_noise=False,
+        seed=123,
+        output_width=width,
+        output_height=height,
+        device="cpu",
+    )
+    emu_base = EventEmulator(**common)
+    emu_base.generate_events(frame_0, 0.0)
+    ev_base = emu_base.generate_events(frame_1, 1.0 / 30.0)
+    emu_base.cleanup()
+
+    emu_disabled = EventEmulator(
+        **common,
+        iebcs_contrast_latency_model=False,
+        iebcs_hist_noise_model=False,
+        iebcs_refractory_state_coupling=False,
+    )
+    emu_disabled.generate_events(frame_0, 0.0)
+    ev_disabled = emu_disabled.generate_events(frame_1, 1.0 / 30.0)
+    emu_disabled.cleanup()
+
+    assert np.array_equal(ev_base, ev_disabled)
+
+
+def test_refractory_release_interpolation_is_idempotent_within_frame():
+    emu = EventEmulator(
+        output_width=2,
+        output_height=2,
+        device="cpu",
+        iebcs_refractory_state_coupling=True,
+        refractory_period_s=1e-3,
+    )
+    emu.base_log_frame = torch.zeros((2, 2), dtype=torch.float32)
+    emu.photoreceptor_noise_arr = torch.zeros((2, 2), dtype=torch.float32)
+    emu.iebcs_refractory_release_ts = torch.tensor(
+        [[0.005, 0.0], [0.0, 0.0]], dtype=torch.float32)
+    emu.t_previous = 0.0
+    photoreceptor = torch.ones((2, 2), dtype=torch.float32)
+    ts = torch.tensor(0.01, dtype=torch.float32)
+
+    emu._apply_refractory_release_interpolation(
+        ts=ts, delta_time=0.01, photoreceptor=photoreceptor)
+    first = emu.base_log_frame.clone()
+    emu._apply_refractory_release_interpolation(
+        ts=ts, delta_time=0.01, photoreceptor=photoreceptor)
+    second = emu.base_log_frame.clone()
+    emu.cleanup()
+
+    assert torch.equal(first, second)
+
+
+def test_hist_noise_event_generation_is_capped_and_reschedules_dropped_due_events(caplog: pytest.LogCaptureFixture):
+    emu = EventEmulator(
+        output_width=1,
+        output_height=1,
+        device="cpu",
+    )
+    emu.iebcs_hist_noise_model = True
+    emu.iebcs_noise_bins_hz = torch.tensor([1e9, 1e9], dtype=torch.float32)
+    emu.iebcs_noise_cdf_pos = torch.tensor([[0.0, 1.0]], dtype=torch.float32)
+    emu.iebcs_noise_cdf_neg = torch.tensor([[0.0, 1.0]], dtype=torch.float32)
+    emu.iebcs_noise_idx_pos = torch.zeros((1, 1), dtype=torch.int64)
+    emu.iebcs_noise_idx_neg = torch.zeros((1, 1), dtype=torch.int64)
+    emu.iebcs_noise_next_pos_s = torch.zeros((1, 1), dtype=torch.float32)
+    emu.iebcs_noise_next_neg_s = torch.zeros((1, 1), dtype=torch.float32)
+
+    with caplog.at_level("WARNING", logger="v2ecore.emulator"):
+        events = emu._sample_hist_noise_events(t_frame=0.1)
+    emu.cleanup()
+
+    cap = EventEmulator.IEBCS_MAX_NOISE_EVENTS_PER_FRAME_FACTOR * 1
+    assert events.shape[0] <= cap
+    assert float(emu.iebcs_noise_next_pos_s[0, 0]) > 0.1
+    assert float(emu.iebcs_noise_next_neg_s[0, 0]) > 0.1
+    assert any("capped" in rec.getMessage() for rec in caplog.records)

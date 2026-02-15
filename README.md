@@ -138,6 +138,29 @@ to run the example below.
   and
   `python scripts/benchmark_v2e_cli.py`
 
+## IEBCS Stage-2 Extensions (Optional)
+
+`v2e` now includes additional opt-in IEBCS-inspired models, all disabled by
+default:
+
+- Contrast-dependent latency:
+  `--iebcs_contrast_latency_model true`
+- Histogram-based background noise:
+  `--iebcs_hist_noise_model true`
+- Refractory state coupling:
+  `--iebcs_refractory_state_coupling true`
+
+Noise distributions can be provided with presets or explicit file paths:
+
+- Preset mode:
+  `--iebcs_noise_source preset --iebcs_noise_preset 161lux`
+- File mode:
+  `--iebcs_noise_source files --iebcs_noise_pos_path ... --iebcs_noise_neg_path ...`
+
+See:
+`docs/README_error_models_extensions.md`
+for full parameter details and interaction rules.
+
 ## Usage
 
 _v2e_ serves multiple purposes. Please read to code if you would like to adapt it for your own application. Here, we only introduce the usage for generating DVS events from conventional video and from specific datasets.

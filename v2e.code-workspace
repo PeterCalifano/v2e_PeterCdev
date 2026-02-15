@@ -44,6 +44,9 @@
 		},
 		{
 			"path": "../trajectory-to-events"
+		},
+		{
+			"path": "../senpi_ebi"
 		}
 	],
 	"settings": {

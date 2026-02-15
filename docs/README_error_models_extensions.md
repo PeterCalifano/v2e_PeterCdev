@@ -11,6 +11,8 @@ Added extensions:
 - IEBCS-inspired threshold reset noise (re-sample thresholds after emitted
   signal events).
 - V2CE-inspired non-uniform intra-frame timestamp placement for event bursts.
+- IEBCS Stage-2 inspired contrast-latency, histogram background noise, and
+  refractory-state coupling (all optional).
 
 Primary implementation files:
 
@@ -40,6 +42,17 @@ Defined in `v2ecore/v2e_args.py`:
 - `--iebcs_latency_mean_us` (default `100.0`)
 - `--iebcs_latency_jitter_us` (default `30.0`)
 - `--iebcs_resample_thresholds_on_event` (default `false`)
+- `--iebcs_contrast_latency_model` (default `false`)
+- `--iebcs_latency_tau_us` (default `300.0`)
+- `--iebcs_latency_clamp_us` (default `10000.0`)
+- `--iebcs_latency_slope_jitter` (default `true`)
+- `--iebcs_hist_noise_model` (default `false`)
+- `--iebcs_noise_source` (default `"preset"`, choices: `preset|files`)
+- `--iebcs_noise_preset` (default `"161lux"`, choices: `3klux|161lux|0.1lux`)
+- `--iebcs_noise_pos_path` (default `None`)
+- `--iebcs_noise_neg_path` (default `None`)
+- `--iebcs_refractory_state_coupling` (default `false`)
+- `--iebcs_refractory_us` (default `None`, then falls back to `--refractory_period`)
 - `--v2ce_nonuniform_burst_timestamps` (default `false`)
 - `--v2ce_burst_timestamps_mode` (default `"random"`, choices: `random|slope`)
 
@@ -134,6 +147,67 @@ Notes:
 
 - Effect is visible when `min_ts_steps > 1` (multi-event bursts in a frame).
 - Output remains monotonic.
+
+### 4. IEBCS Stage-2: Contrast Latency
+
+Intent:
+
+- Use signal-dependent latency per emitted signal event, instead of only a
+  fixed packet-level timestamp shift.
+
+Flags:
+
+- `--iebcs_contrast_latency_model=true`
+- Optional tuning:
+  `--iebcs_latency_tau_us`,
+  `--iebcs_latency_clamp_us`,
+  `--iebcs_latency_slope_jitter`
+
+Behavior:
+
+- For each signal event, latency is sampled from an amplitude/slope-dependent
+  model and added to its per-iteration base timestamp.
+- Existing `--iebcs_latency_jitter_model` remains available as an additional
+  post-packet perturbation model for backward compatibility.
+
+### 5. IEBCS Stage-2: Histogram Background Noise
+
+Intent:
+
+- Replace simplified shot-noise probability sampling with scheduled ON/OFF
+  background noise events sampled from measured histogram distributions.
+
+Flags:
+
+- Enable: `--iebcs_hist_noise_model=true`
+- Source selection:
+  - Presets: `--iebcs_noise_source preset --iebcs_noise_preset 161lux`
+  - Files: `--iebcs_noise_source files --iebcs_noise_pos_path ... --iebcs_noise_neg_path ...`
+
+Behavior:
+
+- One ON and one OFF noise CDF are assigned per pixel.
+- Each pixel keeps next ON/OFF noise timestamps; events due in `(t_prev, t_frame]`
+  are emitted and rescheduled.
+- Event ordering and optional signal/noise labels are preserved.
+
+### 6. IEBCS Stage-2: Refractory State Coupling
+
+Intent:
+
+- Couple refractory handling with state release timestamps and interpolate
+  memory state on refractory release.
+
+Flags:
+
+- `--iebcs_refractory_state_coupling=true`
+- `--iebcs_refractory_us` (optional override of `--refractory_period`)
+
+Behavior:
+
+- Per-pixel refractory-release timestamps gate candidate events.
+- Pixels leaving refractory inside a frame interval update memory state using
+  release-time interpolation before further event checks.
 
 ## Data-Flow Integration
 
@@ -255,10 +329,24 @@ In `v2e.py`:
 - `shot_noise_rate_hz < 0` -> error + exit.
 - `iebcs_latency_mean_us < 0` -> error + exit.
 - `iebcs_latency_jitter_us < 0` -> error + exit.
+- `iebcs_latency_tau_us < 0` -> error + exit.
+- `iebcs_latency_clamp_us < 0` -> error + exit.
+- `iebcs_refractory_us < 0` -> error + exit.
+- `--iebcs_hist_noise_model` with `--iebcs_noise_source=files` requires both
+  ON/OFF file paths.
+- `--iebcs_hist_noise_model` with missing resolved ON/OFF files (including
+  missing preset files) -> actionable error + exit before emulator construction.
 
 In `EventEmulator.__init__`:
 
 - Invalid `v2ce_burst_timestamps_mode` raises `ValueError`.
+- Histogram-noise ON/OFF file existence is validated before loading.
+
+In histogram-noise event scheduling:
+
+- Per-frame histogram-noise output is capped at
+  `8 * num_pixels` events (internal guardrail) to avoid runaway loops.
+- Excess due events are rescheduled strictly after frame time and a warning is logged.
 
 These checks ensure bad parameterizations fail early.
 
@@ -270,10 +358,15 @@ Feature tests in `test/test_emulator_regression.py`:
 - `test_iebcs_resample_thresholds_on_event_updates_thresholds_only_when_enabled`
 - `test_v2ce_random_burst_timestamps_are_nonuniform_and_monotonic`
 - `test_v2ce_slope_mode_biases_events_later_than_random_mode`
+- `test_refractory_release_interpolation_is_idempotent_within_frame`
+- `test_hist_noise_event_generation_is_capped_and_reschedules_dropped_due_events`
 
 CLI wiring test in `test/test_io_regressions.py`:
 
 - `test_main_passes_iebcs_and_v2ce_flags_to_emulator`
+- `test_cli_rejects_invalid_hist_noise_configuration`
+- `test_cli_rejects_missing_preset_hist_noise_files`
+- `test_cli_rejects_negative_latency_tau_or_refractory_values`
 
 ## Quick Usage Examples
 
@@ -299,4 +392,24 @@ V2CE-style burst timestamps:
 python v2e.py ... \
   --v2ce_nonuniform_burst_timestamps true \
   --v2ce_burst_timestamps_mode slope
+```
+
+IEBCS Stage-2 contrast latency + refractory coupling:
+
+```bash
+python v2e.py ... \
+  --iebcs_contrast_latency_model true \
+  --iebcs_latency_tau_us 300 \
+  --iebcs_refractory_state_coupling true \
+  --iebcs_refractory_us 700
+```
+
+IEBCS Stage-2 histogram noise from explicit files:
+
+```bash
+python v2e.py ... \
+  --iebcs_hist_noise_model true \
+  --iebcs_noise_source files \
+  --iebcs_noise_pos_path /path/to/noise_pos.npy \
+  --iebcs_noise_neg_path /path/to/noise_neg.npy
 ```

@@ -218,6 +218,57 @@ def v2e_args(parser):
              "thresholds for pixels that emitted signal events "
              "(disabled by default).")
     modelGroup.add_argument(
+        "--iebcs_contrast_latency_model", default=False, type=str2bool,
+        const=True, nargs='?',
+        help="Enable IEBCS-inspired contrast-dependent latency model "
+             "(disabled by default).")
+    modelGroup.add_argument(
+        "--iebcs_latency_tau_us", type=float, default=300.0,
+        help="Front-end latency model time constant in microseconds for "
+             "--iebcs_contrast_latency_model.")
+    modelGroup.add_argument(
+        "--iebcs_latency_clamp_us", type=float, default=10000.0,
+        help="Upper clamp for per-event latency in microseconds in "
+             "--iebcs_contrast_latency_model.")
+    modelGroup.add_argument(
+        "--iebcs_latency_slope_jitter", default=True, type=str2bool,
+        const=True, nargs='?',
+        help="Scale latency jitter with local signal slope when "
+             "--iebcs_contrast_latency_model is enabled.")
+    modelGroup.add_argument(
+        "--iebcs_hist_noise_model", default=False, type=str2bool,
+        const=True, nargs='?',
+        help="Enable IEBCS-inspired histogram-based background noise model "
+             "(disabled by default).")
+    modelGroup.add_argument(
+        "--iebcs_noise_source", type=str, default="preset",
+        choices=["preset", "files"],
+        help="Source of histogram noise distributions for "
+             "--iebcs_hist_noise_model.")
+    modelGroup.add_argument(
+        "--iebcs_noise_preset", type=str, default="161lux",
+        choices=["3klux", "161lux", "0.1lux"],
+        help="Preset histogram distribution to use when "
+             "--iebcs_noise_source=preset.")
+    modelGroup.add_argument(
+        "--iebcs_noise_pos_path", type=none_or_str, default=None,
+        help="Path to ON-noise cumulative histogram .npy file when "
+             "--iebcs_noise_source=files.")
+    modelGroup.add_argument(
+        "--iebcs_noise_neg_path", type=none_or_str, default=None,
+        help="Path to OFF-noise cumulative histogram .npy file when "
+             "--iebcs_noise_source=files.")
+    modelGroup.add_argument(
+        "--iebcs_refractory_state_coupling", default=False, type=str2bool,
+        const=True, nargs='?',
+        help="Enable IEBCS-inspired refractory state coupling with "
+             "state interpolation at refractory release.")
+    modelGroup.add_argument(
+        "--iebcs_refractory_us", type=float, default=None,
+        help="Refractory period in microseconds for "
+             "--iebcs_refractory_state_coupling. If omitted, "
+             "--refractory_period is used.")
+    modelGroup.add_argument(
         "--v2ce_nonuniform_burst_timestamps", default=False, type=str2bool,
         const=True, nargs='?',
         help="Enable V2CE-inspired non-uniform sub-frame timestamp placement "

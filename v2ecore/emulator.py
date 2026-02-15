@@ -95,6 +95,7 @@ class EventEmulator(object):
                     'c_minus_s_frame': slg, 'base_log_frame': slg, 'diff_frame': slg}
 
     MAX_CHANGE_TO_TERMINATE_EULER_SURROUND_STEPPING = 1e-5
+    IEBCS_MAX_NOISE_EVENTS_PER_FRAME_FACTOR = 8
 
     SINGLE_PIXEL_STATES_FILENAME = 'pixel-states.dat'
     SINGLE_PIXEL_MAX_SAMPLES = 10000
@@ -141,6 +142,15 @@ class EventEmulator(object):
             iebcs_latency_mean_us: float = 100.0,
             iebcs_latency_jitter_us: float = 30.0,
             iebcs_resample_thresholds_on_event: bool = False,
+            iebcs_contrast_latency_model: bool = False,
+            iebcs_latency_tau_us: float = 300.0,
+            iebcs_latency_clamp_us: float = 10000.0,
+            iebcs_latency_slope_jitter: bool = True,
+            iebcs_hist_noise_model: bool = False,
+            iebcs_hist_noise_pos_path: str | None = None,
+            iebcs_hist_noise_neg_path: str | None = None,
+            iebcs_refractory_state_coupling: bool = False,
+            iebcs_refractory_us: float | None = None,
             v2ce_nonuniform_burst_timestamps: bool = False,
             v2ce_burst_timestamps_mode: str = "random",
             shot_noise_rate_hz: float = 0.0,  # rate in hz of temporal noise events
@@ -190,6 +200,22 @@ class EventEmulator(object):
             timestamp jitter std-dev in microseconds for IEBCS model.
         iebcs_resample_thresholds_on_event: bool
             If True, resample per-pixel thresholds after emitted signal events.
+        iebcs_contrast_latency_model: bool
+            If True, model contrast-dependent latency per emitted signal event.
+        iebcs_latency_tau_us: float
+            Front-end time constant in microseconds for contrast-latency model.
+        iebcs_latency_clamp_us: float
+            Upper clamp in microseconds for contrast-latency sampled delays.
+        iebcs_latency_slope_jitter: bool
+            If True, scales latency jitter by local signal slope.
+        iebcs_hist_noise_model: bool
+            If True, use histogram-distribution scheduled background noise.
+        iebcs_hist_noise_pos_path, iebcs_hist_noise_neg_path: str|None
+            Optional paths to ON/OFF histogram CDF files for histogram noise model.
+        iebcs_refractory_state_coupling: bool
+            If True, use refractory gating based on release timestamps with state updates.
+        iebcs_refractory_us: float|None
+            Refractory period in microseconds for IEBCS-style refractory coupling.
         v2ce_nonuniform_burst_timestamps: bool
             If True, use non-uniform sub-frame timestamps for same-frame event bursts.
         v2ce_burst_timestamps_mode: str
@@ -264,6 +290,35 @@ class EventEmulator(object):
         self.iebcs_latency_jitter_s = float(iebcs_latency_jitter_us) * 1e-6
         self.iebcs_resample_thresholds_on_event = bool(
             iebcs_resample_thresholds_on_event)
+        self.iebcs_contrast_latency_model = bool(iebcs_contrast_latency_model)
+        self.iebcs_latency_tau_s = float(iebcs_latency_tau_us) * 1e-6
+        self.iebcs_latency_clamp_s = float(iebcs_latency_clamp_us) * 1e-6
+        self.iebcs_latency_slope_jitter = bool(iebcs_latency_slope_jitter)
+        self.iebcs_hist_noise_model = bool(iebcs_hist_noise_model)
+        self.iebcs_hist_noise_pos_path = iebcs_hist_noise_pos_path
+        self.iebcs_hist_noise_neg_path = iebcs_hist_noise_neg_path
+        self.iebcs_refractory_state_coupling = bool(
+            iebcs_refractory_state_coupling)
+        self.iebcs_refractory_s = \
+            float(iebcs_refractory_us) * 1e-6 \
+            if iebcs_refractory_us is not None \
+            else self.refractory_period_s
+        self.iebcs_refractory_release_ts: torch.Tensor | None = None
+        self.iebcs_noise_bins_hz: torch.Tensor | None = None
+        self.iebcs_noise_cdf_pos: torch.Tensor | None = None
+        self.iebcs_noise_cdf_neg: torch.Tensor | None = None
+        self.iebcs_noise_idx_pos: torch.Tensor | None = None
+        self.iebcs_noise_idx_neg: torch.Tensor | None = None
+        self.iebcs_noise_next_pos_s: torch.Tensor | None = None
+        self.iebcs_noise_next_neg_s: torch.Tensor | None = None
+
+        if self.iebcs_hist_noise_model:
+            if self.iebcs_hist_noise_pos_path is None or self.iebcs_hist_noise_neg_path is None:
+                raise ValueError(
+                    "IEBCS histogram noise model requires ON/OFF histogram paths")
+            self._load_iebcs_noise_distributions(
+                pos_path=self.iebcs_hist_noise_pos_path,
+                neg_path=self.iebcs_hist_noise_neg_path)
 
         # Extensions from V2CE (
         self.v2ce_nonuniform_burst_timestamps = bool(
@@ -615,6 +670,12 @@ class EventEmulator(object):
             self.timestamp_mem = torch.zeros(
                 first_frame_linear.shape, dtype=torch.float32,
                 device=self.device) - self.refractory_period_s
+        if self.iebcs_refractory_state_coupling:
+            self.iebcs_refractory_release_ts = torch.zeros(
+                first_frame_linear.shape, dtype=torch.float32, device=self.device
+            )
+        if self.iebcs_hist_noise_model:
+            self._init_iebcs_noise_schedule(first_frame_linear.shape)
 
     def set_dvs_params(self, model: str):
         if model == 'clean':
@@ -680,8 +741,318 @@ class EventEmulator(object):
         self.scidvs_highpass: np.ndarray | None = None
         self.scidvs_previous_photo: np.ndarray | None = None
         self.scidvs_tau_arr: np.ndarray | None = None
+        self.iebcs_refractory_release_ts = None
+        self.iebcs_noise_next_pos_s = None
+        self.iebcs_noise_next_neg_s = None
 
         self.frame_counter = 0
+
+    @staticmethod
+    def _iebcs_frequency_bins_hz() -> np.ndarray:
+        """Return IEBCS-style frequency bins used by histogram noise models."""
+        bins: list[np.ndarray] = []
+        for dec in range(-3, 5):
+            bins.append(np.arange(10 ** dec, 10 ** (dec + 1), 10 ** dec))
+        return np.concatenate(bins).astype(np.float32)
+
+    def _normalize_noise_cdf(self, arr: np.ndarray, label: str) -> np.ndarray:
+        """Normalize a 2D array to monotonic CDF rows ending at 1."""
+        if arr.ndim == 1:
+            arr = arr.reshape(1, -1)
+        elif arr.ndim > 2:
+            arr = arr.reshape(-1, arr.shape[-1])
+        if arr.ndim != 2 or arr.shape[1] < 2:
+            raise ValueError(f"{label} noise histogram must be 2D with >=2 bins")
+        arr = np.asarray(arr, dtype=np.float32)
+        arr = np.maximum.accumulate(arr, axis=1)
+        row_last = arr[:, -1]
+        zero_rows = row_last <= 0
+        if np.any(zero_rows):
+            arr[zero_rows, 0] = 1.0
+            arr[zero_rows, 1:] = 1.0
+            row_last = arr[:, -1]
+        arr = arr / row_last[:, None]
+        arr[:, -1] = 1.0
+        return arr
+
+    def _load_iebcs_noise_distributions(self, pos_path: str, neg_path: str) -> None:
+        """Load and validate IEBCS histogram-noise CDF distributions."""
+        if not os.path.isfile(pos_path):
+            raise ValueError(f'IEBCS ON-noise histogram file not found: {pos_path}')
+        if not os.path.isfile(neg_path):
+            raise ValueError(f'IEBCS OFF-noise histogram file not found: {neg_path}')
+
+        pos_raw = np.load(pos_path)
+        neg_raw = np.load(neg_path)
+        pos = self._normalize_noise_cdf(pos_raw, "ON")
+        neg = self._normalize_noise_cdf(neg_raw, "OFF")
+        if pos.shape[1] != neg.shape[1]:
+            raise ValueError(
+                f'IEBCS ON/OFF histogram bins mismatch: {pos.shape[1]} != {neg.shape[1]}')
+
+        bins = self._iebcs_frequency_bins_hz()
+        if pos.shape[1] != bins.shape[0]:
+            bins = np.logspace(-3, 4, num=pos.shape[1], base=10.0, dtype=np.float32)
+
+        self.iebcs_noise_bins_hz = torch.tensor(
+            bins, dtype=torch.float32, device=self.device)
+        self.iebcs_noise_cdf_pos = torch.tensor(
+            pos, dtype=torch.float32, device=self.device)
+        self.iebcs_noise_cdf_neg = torch.tensor(
+            neg, dtype=torch.float32, device=self.device)
+
+    def _sample_iebcs_noise_delay_s(
+            self,
+            row_indices: torch.Tensor,
+            polarity: int) -> torch.Tensor:
+        """Sample per-pixel noise inter-arrival delays from histogram CDF rows."""
+        if row_indices.numel() == 0:
+            return torch.empty((0,), dtype=torch.float32, device=self.device)
+        cdf_all = self.iebcs_noise_cdf_pos if polarity > 0 else self.iebcs_noise_cdf_neg
+        assert cdf_all is not None
+        assert self.iebcs_noise_bins_hz is not None
+        cdf = cdf_all[row_indices]
+        u = torch.rand((row_indices.numel(), 1), dtype=torch.float32, device=self.device)
+        bin_idx = torch.argmax((cdf >= u).to(torch.int64), dim=1)
+        freq_hz = self.iebcs_noise_bins_hz[bin_idx]
+        freq_hz = torch.clamp(freq_hz, min=1e-6)
+        return 1.0 / freq_hz
+
+    def _init_iebcs_noise_schedule(self, shape: torch.Size) -> None:
+        """Initialize per-pixel histogram-noise assignment and next-event timestamps."""
+        if not self.iebcs_hist_noise_model:
+            return
+        assert self.iebcs_noise_cdf_pos is not None
+        assert self.iebcs_noise_cdf_neg is not None
+        num_pixels = int(np.prod(shape))
+        n_pos = self.iebcs_noise_cdf_pos.shape[0]
+        n_neg = self.iebcs_noise_cdf_neg.shape[0]
+        self.iebcs_noise_idx_pos = torch.randint(
+            low=0, high=n_pos, size=shape, dtype=torch.int64, device=self.device)
+        self.iebcs_noise_idx_neg = torch.randint(
+            low=0, high=n_neg, size=shape, dtype=torch.int64, device=self.device)
+        flat_pos_idx = self.iebcs_noise_idx_pos.reshape(-1)
+        flat_neg_idx = self.iebcs_noise_idx_neg.reshape(-1)
+        pos_delay = self._sample_iebcs_noise_delay_s(flat_pos_idx, polarity=1)
+        neg_delay = self._sample_iebcs_noise_delay_s(flat_neg_idx, polarity=-1)
+        pos_phase = torch.rand((num_pixels,), dtype=torch.float32, device=self.device)
+        neg_phase = torch.rand((num_pixels,), dtype=torch.float32, device=self.device)
+        self.iebcs_noise_next_pos_s = (pos_delay * pos_phase).reshape(shape)
+        self.iebcs_noise_next_neg_s = (neg_delay * neg_phase).reshape(shape)
+
+    def _build_events_from_coords_with_ts(
+            self,
+            xy: tuple[torch.Tensor, torch.Tensor],
+            ts: torch.Tensor,
+            polarity: int) -> torch.Tensor:
+        """Build [N,4] events from per-event coordinates and timestamps."""
+        n_events = xy[0].shape[0]
+        if n_events == 0:
+            return torch.empty((0, 4), dtype=torch.float32, device=self.device)
+        events = torch.empty((n_events, 4), dtype=torch.float32, device=self.device)
+        events[:, 0] = ts
+        events[:, 1] = xy[1].to(torch.float32)
+        events[:, 2] = xy[0].to(torch.float32)
+        events[:, 3] = 1.0 if polarity > 0 else -1.0
+        if polarity > 0:
+            self.num_events_on += n_events
+        else:
+            self.num_events_off += n_events
+        self.num_events_total += n_events
+        return events
+
+    def _sample_hist_noise_events(self, t_frame: float) -> torch.Tensor:
+        """Generate IEBCS-style histogram-driven background noise events up to t_frame."""
+        if not self.iebcs_hist_noise_model:
+            return torch.empty((0, 4), dtype=torch.float32, device=self.device)
+        assert self.iebcs_noise_next_pos_s is not None
+        assert self.iebcs_noise_next_neg_s is not None
+        assert self.iebcs_noise_idx_pos is not None
+        assert self.iebcs_noise_idx_neg is not None
+
+        event_chunks: list[torch.Tensor] = []
+        next_pos = self.iebcs_noise_next_pos_s
+        next_neg = self.iebcs_noise_next_neg_s
+        frame_time_t = torch.tensor(t_frame, dtype=torch.float32, device=self.device)
+        max_events = int(
+            EventEmulator.IEBCS_MAX_NOISE_EVENTS_PER_FRAME_FACTOR * next_pos.numel())
+        emitted_events = 0
+        clamped_events = 0
+        clamped = False
+
+        pos_mask = next_pos <= frame_time_t
+        while bool(pos_mask.any()):
+            pos_xy = pos_mask.nonzero(as_tuple=True)
+            ts = next_pos[pos_xy]
+            due_events = ts.shape[0]
+            remaining = max_events - emitted_events
+            if remaining <= 0:
+                clamped = True
+                clamped_events += due_events
+                dropped_rows = self.iebcs_noise_idx_pos[pos_xy]
+                next_pos[pos_xy] = frame_time_t + \
+                    self._sample_iebcs_noise_delay_s(dropped_rows, polarity=1)
+                break
+
+            kept_xy = pos_xy
+            kept_ts = ts
+            dropped_xy = None
+            if due_events > remaining:
+                clamped = True
+                kept_xy = (pos_xy[0][:remaining], pos_xy[1][:remaining])
+                kept_ts = ts[:remaining]
+                dropped_xy = (pos_xy[0][remaining:], pos_xy[1][remaining:])
+                clamped_events += due_events - remaining
+
+            if kept_ts.shape[0] > 0:
+                event_chunks.append(self._build_events_from_coords_with_ts(
+                    kept_xy, kept_ts, polarity=1))
+                emitted_events += int(kept_ts.shape[0])
+                kept_rows = self.iebcs_noise_idx_pos[kept_xy]
+                next_pos[kept_xy] = next_pos[kept_xy] + \
+                    self._sample_iebcs_noise_delay_s(kept_rows, polarity=1)
+
+            if dropped_xy is not None and dropped_xy[0].numel() > 0:
+                dropped_rows = self.iebcs_noise_idx_pos[dropped_xy]
+                next_pos[dropped_xy] = frame_time_t + \
+                    self._sample_iebcs_noise_delay_s(dropped_rows, polarity=1)
+
+            if emitted_events >= max_events:
+                break
+            pos_mask = next_pos <= frame_time_t
+
+        if emitted_events < max_events:
+            neg_mask = next_neg <= frame_time_t
+            while bool(neg_mask.any()):
+                neg_xy = neg_mask.nonzero(as_tuple=True)
+                ts = next_neg[neg_xy]
+                due_events = ts.shape[0]
+                remaining = max_events - emitted_events
+                if remaining <= 0:
+                    clamped = True
+                    clamped_events += due_events
+                    dropped_rows = self.iebcs_noise_idx_neg[neg_xy]
+                    next_neg[neg_xy] = frame_time_t + \
+                        self._sample_iebcs_noise_delay_s(dropped_rows, polarity=-1)
+                    break
+
+                kept_xy = neg_xy
+                kept_ts = ts
+                dropped_xy = None
+                if due_events > remaining:
+                    clamped = True
+                    kept_xy = (neg_xy[0][:remaining], neg_xy[1][:remaining])
+                    kept_ts = ts[:remaining]
+                    dropped_xy = (neg_xy[0][remaining:], neg_xy[1][remaining:])
+                    clamped_events += due_events - remaining
+
+                if kept_ts.shape[0] > 0:
+                    event_chunks.append(self._build_events_from_coords_with_ts(
+                        kept_xy, kept_ts, polarity=-1))
+                    emitted_events += int(kept_ts.shape[0])
+                    kept_rows = self.iebcs_noise_idx_neg[kept_xy]
+                    next_neg[kept_xy] = next_neg[kept_xy] + \
+                        self._sample_iebcs_noise_delay_s(kept_rows, polarity=-1)
+
+                if dropped_xy is not None and dropped_xy[0].numel() > 0:
+                    dropped_rows = self.iebcs_noise_idx_neg[dropped_xy]
+                    next_neg[dropped_xy] = frame_time_t + \
+                        self._sample_iebcs_noise_delay_s(dropped_rows, polarity=-1)
+
+                if emitted_events >= max_events:
+                    break
+                neg_mask = next_neg <= frame_time_t
+
+        if emitted_events >= max_events:
+            due_pos = next_pos <= frame_time_t
+            if bool(due_pos.any()):
+                clamped = True
+                clamped_events += int(due_pos.sum().item())
+                due_pos_xy = due_pos.nonzero(as_tuple=True)
+                due_pos_rows = self.iebcs_noise_idx_pos[due_pos_xy]
+                next_pos[due_pos_xy] = frame_time_t + \
+                    self._sample_iebcs_noise_delay_s(due_pos_rows, polarity=1)
+            due_neg = next_neg <= frame_time_t
+            if bool(due_neg.any()):
+                clamped = True
+                clamped_events += int(due_neg.sum().item())
+                due_neg_xy = due_neg.nonzero(as_tuple=True)
+                due_neg_rows = self.iebcs_noise_idx_neg[due_neg_xy]
+                next_neg[due_neg_xy] = frame_time_t + \
+                    self._sample_iebcs_noise_delay_s(due_neg_rows, polarity=-1)
+
+        if clamped:
+            v2e_logger.warning(
+                "IEBCS histogram-noise events capped at %d per frame (emitted=%d, clamped=%d) at t=%.6fs",
+                max_events, emitted_events, clamped_events, t_frame)
+
+        if len(event_chunks) == 0:
+            return torch.empty((0, 4), dtype=torch.float32, device=self.device)
+        events = torch.cat(event_chunks, dim=0)
+        sort_idx = torch.argsort(events[:, 0])
+        return events[sort_idx]
+
+    def _apply_refractory_release_interpolation(
+            self,
+            ts: torch.Tensor,
+            delta_time: float,
+            photoreceptor: torch.Tensor) -> None:
+        """Interpolate memory state for pixels that leave refractory before ts."""
+        if not self.iebcs_refractory_state_coupling:
+            return
+        if self.iebcs_refractory_release_ts is None:
+            return
+        if delta_time <= 0:
+            return
+        release = self.iebcs_refractory_release_ts
+        released = (release > self.t_previous) & (release <= ts)
+        if not bool(released.any()):
+            return
+        frac = (release[released] - self.t_previous) / max(delta_time, 1e-9)
+        frac = torch.clamp(frac, min=0.0, max=1.0)
+        prev = self.base_log_frame[released]
+        target = photoreceptor[released] + self.photoreceptor_noise_arr[released]
+        self.base_log_frame[released] = prev + frac * (target - prev)
+        # Mark released pixels as processed for this frame interval so
+        # interpolation is applied at most once until a new release is scheduled.
+        self.iebcs_refractory_release_ts[released] = self.t_previous
+
+    def _compute_contrast_latency_timestamps(
+            self,
+            xy: tuple[torch.Tensor, torch.Tensor],
+            threshold: torch.Tensor | float,
+            base_ts: torch.Tensor,
+            photoreceptor: torch.Tensor) -> torch.Tensor:
+        """Compute IEBCS-inspired contrast-dependent event timestamps."""
+        ts_dtype = torch.float32
+        if self.iebcs_refractory_release_ts is not None:
+            ts_dtype = self.iebcs_refractory_release_ts.dtype
+        elif isinstance(base_ts, torch.Tensor):
+            ts_dtype = base_ts.dtype
+        n_events = xy[0].shape[0]
+        if n_events == 0:
+            return torch.empty((0,), dtype=ts_dtype, device=self.device)
+        y = xy[0]
+        x = xy[1]
+        if isinstance(threshold, torch.Tensor):
+            th = threshold[y, x].to(dtype=ts_dtype)
+        else:
+            th = torch.full((n_events,), abs(float(threshold)),
+                            dtype=ts_dtype, device=self.device)
+        drive = torch.abs((photoreceptor[y, x] + self.photoreceptor_noise_arr[y, x]) -
+                          self.base_log_frame[y, x]).to(dtype=ts_dtype)
+        drive = torch.clamp(drive, min=1e-6)
+        amp = torch.clamp(th / drive, min=1e-6, max=0.999999)
+        lat = self.iebcs_latency_mean_s - self.iebcs_latency_tau_s * torch.log1p(-amp)
+        if self.iebcs_latency_jitter_s > 0:
+            jitter_std = torch.full_like(lat, self.iebcs_latency_jitter_s)
+            if self.iebcs_latency_slope_jitter:
+                jitter_std = jitter_std * torch.sqrt(1.0 + amp * amp)
+            lat = lat + torch.normal(
+                mean=torch.zeros_like(jitter_std),
+                std=jitter_std)
+        lat = torch.clamp(lat, min=0.0, max=self.iebcs_latency_clamp_s)
+        return (base_ts + lat).to(dtype=ts_dtype, device=self.device)
 
     def _refresh_threshold_probability_scales(self) -> None:
         """Recompute per-pixel ON/OFF probability scaling for shot-noise generation.
@@ -785,17 +1156,23 @@ class EventEmulator(object):
         timestamps, then events (and labels) are sorted by timestamp to maintain
         monotonic output packets.
         """
-        if not self.iebcs_latency_jitter_model or events.shape[0] == 0:
+        if events.shape[0] == 0:
             return events, signnoise_label
 
-        offsets = torch.normal(
-            mean=self.iebcs_latency_mean_s,
-            std=self.iebcs_latency_jitter_s,
-            size=(events.shape[0],),
-            dtype=torch.float32,
-            device=self.device)
-        offsets = torch.clamp(offsets, min=0.0)
-        events[:, 0] += offsets
+        if self.iebcs_latency_jitter_model:
+            offsets = torch.normal(
+                mean=self.iebcs_latency_mean_s,
+                std=self.iebcs_latency_jitter_s,
+                size=(events.shape[0],),
+                dtype=torch.float32,
+                device=self.device)
+            offsets = torch.clamp(offsets, min=0.0)
+            events[:, 0] += offsets
+
+        need_sort = self.iebcs_latency_jitter_model or \
+            self.iebcs_contrast_latency_model or self.iebcs_hist_noise_model
+        if not need_sort:
+            return events, signnoise_label
 
         sorted_idx = torch.argsort(events[:, 0])
         events = events[sorted_idx]
@@ -1071,6 +1448,14 @@ class EventEmulator(object):
                 pos_cord = (pos_evts_frame >= i + 1)
                 neg_cord = (neg_evts_frame >= i + 1)
 
+                if self.iebcs_refractory_state_coupling:
+                    self._apply_refractory_release_interpolation(
+                        ts=ts[i], delta_time=delta_time, photoreceptor=photoreceptor)
+                    if self.iebcs_refractory_release_ts is not None:
+                        available = self.iebcs_refractory_release_ts <= ts[i]
+                        pos_cord = pos_cord & available
+                        neg_cord = neg_cord & available
+
                 # filter events with refractory_period
                 # only filter when refractory_period_s is large enough
                 # otherwise, pass everything
@@ -1080,7 +1465,7 @@ class EventEmulator(object):
                 # is high enough so that dt is less than one refractory period.
                 # KEY[H-REFRACTORY-EXT]: practical refractory gate extension
                 # applied after event quantization.
-                if self.refractory_period_s > ts_step:
+                if (not self.iebcs_refractory_state_coupling) and self.refractory_period_s > ts_step:
                     pos_time_since_last_spike = (
                         pos_cord * ts[i] - self.timestamp_mem)
                     neg_time_since_last_spike = (
@@ -1114,8 +1499,48 @@ class EventEmulator(object):
                 pos_event_xy = pos_cord.nonzero(as_tuple=True)
                 neg_event_xy = neg_cord.nonzero(as_tuple=True)
 
-                events_curr_iter = self.get_event_list_from_coords(
-                    pos_event_xy, neg_event_xy, ts[i])
+                if self.iebcs_contrast_latency_model:
+                    pos_ts = self._compute_contrast_latency_timestamps(
+                        xy=pos_event_xy,
+                        threshold=self.pos_thres,
+                        base_ts=ts[i],
+                        photoreceptor=photoreceptor)
+                    neg_ts = self._compute_contrast_latency_timestamps(
+                        xy=neg_event_xy,
+                        threshold=self.neg_thres,
+                        base_ts=ts[i],
+                        photoreceptor=photoreceptor)
+                    pos_events = self._build_events_from_coords_with_ts(
+                        pos_event_xy, pos_ts, polarity=1)
+                    neg_events = self._build_events_from_coords_with_ts(
+                        neg_event_xy, neg_ts, polarity=-1)
+                    events_curr_iter = torch.cat((pos_events, neg_events), dim=0) \
+                        if (pos_events.shape[0] + neg_events.shape[0]) > 0 else None
+                else:
+                    events_curr_iter = self.get_event_list_from_coords(
+                        pos_event_xy, neg_event_xy, ts[i])
+
+                if self.iebcs_refractory_state_coupling and self.iebcs_refractory_release_ts is not None:
+                    release_ts = self.iebcs_refractory_release_ts
+                    refractory_s = torch.tensor(
+                        self.iebcs_refractory_s,
+                        dtype=release_ts.dtype,
+                        device=release_ts.device,
+                    )
+                    if self.iebcs_contrast_latency_model:
+                        if pos_event_xy[0].numel() > 0:
+                            release_ts[pos_event_xy] = \
+                                pos_ts.to(dtype=release_ts.dtype, device=release_ts.device) + refractory_s
+                        if neg_event_xy[0].numel() > 0:
+                            release_ts[neg_event_xy] = \
+                                neg_ts.to(dtype=release_ts.dtype, device=release_ts.device) + refractory_s
+                    else:
+                        if pos_event_xy[0].numel() > 0:
+                            release_ts[pos_event_xy] = \
+                                ts[i].to(dtype=release_ts.dtype, device=release_ts.device) + refractory_s
+                        if neg_event_xy[0].numel() > 0:
+                            release_ts[neg_event_xy] = \
+                                ts[i].to(dtype=release_ts.dtype, device=release_ts.device) + refractory_s
 
                 # shuffle and append to the events collectors
                 if events_curr_iter is not None:
@@ -1140,9 +1565,18 @@ class EventEmulator(object):
             num_signal_events, dtype=torch.bool, device=self.device
         ) if self.label_signal_noise else None  # all signal so far
 
+        if self.iebcs_hist_noise_model:
+            hist_noise_events = self._sample_hist_noise_events(t_frame=t_frame)
+            if hist_noise_events.shape[0] > 0:
+                events = torch.cat((events, hist_noise_events), dim=0)
+                if self.label_signal_noise:
+                    hist_noise_labels = torch.zeros(
+                        (hist_noise_events.shape[0],), dtype=torch.bool, device=self.device)
+                    signnoise_label = torch.cat((signnoise_label, hist_noise_labels))
+
         # This was in the loop, here we calculate loop-independent quantities
         # KEY[G-SHOT-CALL]: simplified Poisson-like temporal shot-noise model.
-        if self.shot_noise_rate_hz > 0 and not self.photoreceptor_noise:
+        if self.shot_noise_rate_hz > 0 and not self.photoreceptor_noise and not self.iebcs_hist_noise_model:
             # Generate all the noise events for this entire input frame; there could be (but unlikely) several per pixel but only 1 on or off event is returned here
             shot_on_cord, shot_off_cord = generate_shot_noise(
                 shot_noise_rate_hz=self.shot_noise_rate_hz,
@@ -1183,7 +1617,7 @@ class EventEmulator(object):
         self.base_log_frame -= final_neg_evts_frame * self.neg_thres
 
         # however, if we made a shot noise event, then just memorize the log intensity at this point, so that the pixels are reset and forget the log intensity input
-        if not self.photoreceptor_noise and self.shot_noise_rate_hz > 0:
+        if (not self.photoreceptor_noise) and self.shot_noise_rate_hz > 0 and (not self.iebcs_hist_noise_model):
             # KEY[G-SHOT-RESET]: simple shot-noise path hard-resets memory at
             # noisy pixels to the current low-pass log intensity.
             self.base_log_frame[shot_on_xy] = self.lp_log_frame[shot_on_xy]
@@ -1394,7 +1828,8 @@ class EventEmulator(object):
 
 
 if __name__ == "__main__":
-    # define a emulator
+
+    # Define emulator
     emulator = EventEmulator(
         pos_thres=0.2,
         neg_thres=0.2,
@@ -1408,7 +1843,7 @@ if __name__ == "__main__":
     cap = cv2.VideoCapture(
         os.path.join(os.environ["HOME"], "v2e_tutorial_video.avi"))
 
-    # num of frames
+    # Num of frames
     fps = cap.get(cv2.CAP_PROP_FPS)
     print("FPS: {}".format(fps))
     num_of_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))

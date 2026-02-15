@@ -76,7 +76,8 @@ class EventRenderer(object):
         self.height = None
         self.full_scale_count = full_scale_count
         self.accum_mode = 'duration'  # 'duration', 'count', 'area_count'
-        # suffix using dvs_vid file name for the frame times
+
+        # Suffix using dvs_vid file name for the frame times
         # when not using constant_time
         self.dvs_frame_times_suffix = frame_times_suffix
         self.frame_rate_hz = None
@@ -87,17 +88,21 @@ class EventRenderer(object):
         self.area_counts = None  # 2d array of counts
         self.area_count = None
         self.area_dimension = area_dimension
+
         if self.exposure_mode == ExposureMode.DURATION:
             self.frame_rate_hz = 1 / self.exposure_value
             self.frameIntevalS = 1 / self.frame_rate_hz
+
         elif self.exposure_mode == ExposureMode.COUNT:
             self.event_count = int(self.exposure_value)
+        
         elif self.exposure_mode == ExposureMode.AREA_COUNT:
             self.area_count = int(self.exposure_value)
+        
         elif self.exposure_mode==ExposureMode.SOURCE:
             pass
         else:
-            raise (f'exposure mode {self.exposure_mode} is unknown; must be duration, count, or area-count')
+            raise (f'Exposure mode {self.exposure_mode} is unknown; must be duration, count, or area-count')
 
         self.video_output_file_name = dvs_vid
         self.video_output_file = None
