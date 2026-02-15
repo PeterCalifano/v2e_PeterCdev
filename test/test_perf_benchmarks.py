@@ -17,7 +17,7 @@ import pytest
 torch = pytest.importorskip("torch")
 import torch.nn.functional as F  # noqa: E402
 
-from v2ecore.emulator_utils import LowPassFilter, lin_log, compute_event_map
+from v2ecore.emulator_utils import LowPassFilter, Map_linear_to_log_luminance, compute_event_map
 from v2ecore.v2e_utils import hist2d_numba_seq, hist2d_numba_parallel
 
 # ---------------------------------------------------------------------------
@@ -242,20 +242,20 @@ class TestHistogramBenchmark:
 
 
 # ===================================================================
-# 5. lin_log baseline (for reference, since float64 is kept)
+# 5. Map_linear_to_log_luminance baseline (for reference, since float64 is kept)
 # ===================================================================
 
 class TestLinLogBenchmark:
-    """Baseline lin_log timing at DAVIS346 resolution."""
+    """Baseline Map_linear_to_log_luminance timing at DAVIS346 resolution."""
 
     def test_lin_log_timing(self):
         x = torch.randint(0, 256, (260, 346), dtype=torch.float32, device=_DEVICE)
 
         def run():
-            lin_log(x)
+            Map_linear_to_log_luminance(x)
 
         t = _benchmark(run)
-        print(f"\n  lin_log (346x260, {_DEVICE}): {t*1e6:.1f} µs")
+        print(f"\n  Map_linear_to_log_luminance (346x260, {_DEVICE}): {t*1e6:.1f} µs")
 
 
 # ===================================================================

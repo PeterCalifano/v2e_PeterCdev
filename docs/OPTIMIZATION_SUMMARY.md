@@ -8,7 +8,7 @@ Baseline commit: `01c0155` ([MAJOR] Implement relevant IEBCS features)
 
 Implemented targeted performance optimizations focusing on:
 
-1. Low-level kernel optimizations (lin_log, LowPassFilter)
+1. Low-level kernel optimizations (Map_linear_to_log_luminance, LowPassFilter)
 2. CPU-GPU transfer patterns
 3. Event buffer management
 4. Histogram parallelization
@@ -35,7 +35,7 @@ Implemented targeted performance optimizations focusing on:
 | Optimization | Result | Reason |
 |--------------|--------|--------|
 | **Parallel histogram** | **0.00x** (catastrophically slow) | Requires TBB >= 2021.6 (have 12050, need 12060) |
-| **lin_log float64→float32** | Not implemented | Would break OFF event generation (numerical precision required) |
+| **Map_linear_to_log_luminance float64→float32** | Not implemented | Would break OFF event generation (numerical precision required) |
 
 ## Event Buffer Analysis (Reverted)
 
@@ -97,7 +97,7 @@ Tool: `test/test_end_to_end_perf.py`, `scripts/benchmark_emulator.py`
 
 ### Modified Files
 
-- `v2ecore/emulator_utils.py`: LowPassFilter optimization, lin_log TODO comment
+- `v2ecore/emulator_utils.py`: LowPassFilter optimization, Map_linear_to_log_luminance TODO comment
 - `v2ecore/emulator.py`: CPU-GPU transfer cleanup, event buffer comment with benchmark results
 - `v2ecore/v2e_utils.py`: Parallel histogram implementation
 - `v2ecore/renderer.py`: Use auto-selecting histogram function
@@ -202,7 +202,7 @@ def hist2d_numba(tracks, bins, ranges):
 1. 🔄 Upgrade Numba/TBB to enable parallel histogram (TBB >= 2021.6)
 2. 🔍 Profile end-to-end to identify if event buffer has hidden costs
 3. 🔍 Investigate other PyTorch kernel fusion opportunities
-4. 🔍 Consider float32 path for lin_log with extensive regression testing
+4. 🔍 Consider float32 path for Map_linear_to_log_luminance with extensive regression testing
 
 ## Validation
 

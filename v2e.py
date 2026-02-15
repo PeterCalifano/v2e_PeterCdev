@@ -146,7 +146,7 @@ def resolve_iebcs_noise_paths(
     return str(base_dir / pos_name), str(base_dir / neg_name)
 
 
-def main():
+def main() -> None: #--check-untyped-defs
 
     # %% Arguments and options handling
 
@@ -313,6 +313,7 @@ def main():
     timestamp_resolution: float | None = args.timestamp_resolution
     auto_timestamp_resolution: bool = args.auto_timestamp_resolution
     disable_slomo: bool = args.disable_slomo
+    
     slomo = None  # make it later on
 
     if not disable_slomo and auto_timestamp_resolution is False \
@@ -342,8 +343,7 @@ def main():
     leak_rate_hz = args.leak_rate_hz
     if leak_rate_hz > 0 and sigma_thres == 0:
         logger.warning(
-            'leak_rate_hz>0 but sigma_thres==0, '
-            'so all leak events will be synchronous')
+            'leak_rate_hz > 0 but sigma_thres == 0. All leak events will be synchronous.')
     shot_noise_rate_hz = args.shot_noise_rate_hz
     iebcs_latency_jitter_model: bool = args.iebcs_latency_jitter_model
     iebcs_latency_mean_us: float = args.iebcs_latency_mean_us
@@ -418,12 +418,16 @@ def main():
     dvs_h5 = args.dvs_h5
     dvs_aedat2 = args.dvs_aedat2
     dvs_aedat4 = args.dvs_aedat4
-    aedat4_camera_name: str | None = args.aedat4_camera_name
+    aedat4_camera_name = args.aedat4_camera_name
+
     if args.dvxplorer and aedat4_camera_name is None:
         aedat4_camera_name = "DVXplorer"
+
     dvs_text = args.dvs_text
-    # signal noise output CSV file
+    
+    # Signal noise output CSV file
     label_signal_noise = args.label_signal_noise
+
     if label_signal_noise and dvs_text is None and dvs_aedat2 is None and dvs_aedat4 is None:
         logger.error(
             'if you specify --label_signal_noise you must specify --dvs_text and/or --dvs_aedat2 and/or --dvs_aedat4')
@@ -488,14 +492,13 @@ def main():
 
             if output_height is None and hasattr(input_source, 'frame_height'):
                 set_size = True
-                output_height: int = input_source.frame_height
+                output_height = input_source.frame_height
 
             if output_width is None and hasattr(input_source, 'frame_width'):
                 set_size = True
-                output_width: int = input_source.frame_width
+                output_width = input_source.frame_width
 
             if set_size:
-
                 logger.warning(
                     f'Auto-selected DVS output size from input frame: '
                     f'{output_width}x{output_height}. '
@@ -504,6 +507,10 @@ def main():
             elif output_height is None or output_width is None:
                 logger.error(
                     'Could not read video frame size from video input and so could not automatically set DVS output size. \nCheck DVS camera sizes arguments.')
+                v2e_quit(1)
+
+        assert output_height is not None, "output_height should have been set by now, check code logic"
+        assert output_width is not None, "output_width should have been set by now, check code logic"
 
         # Check output height and width
         if output_height > 1024 or output_width > 1024:
@@ -627,14 +634,13 @@ def main():
         # Set SloMo model, set no SloMo model if no slowdown
         if not disable_slomo and (auto_timestamp_resolution or slowdown_factor != NO_SLOWDOWN):
 
-            slomo = SuperSloMo(
-                model=args.slomo_model,
-                auto_upsample=auto_timestamp_resolution,
-                upsampling_factor=slowdown_factor,
-                video_path=None if args.skip_video_output else output_folder,
-                vid_orig=None if args.skip_video_output else vid_orig,
-                vid_slomo=None if args.skip_video_output else vid_slomo,
-                preview=preview, batch_size=batch_size)
+            slomo = SuperSloMo(model=args.slomo_model,
+                               auto_upsample=auto_timestamp_resolution,
+                               upsampling_factor=slowdown_factor,
+                               video_path=None if args.skip_video_output else output_folder,
+                               vid_orig=None if args.skip_video_output else vid_orig,
+                               vid_slomo=None if args.skip_video_output else vid_slomo,
+                               preview=preview, batch_size=batch_size)
 
     if not synthetic_input and not auto_timestamp_resolution:
         logger.info(
@@ -664,9 +670,9 @@ def main():
                 dvsFps*srcDurationToBeProcessed/input_slowmotion_factor)
             dvsDuration = dvsNumFrames/dvsFps
             dvsPlaybackDuration = dvsNumFrames/avi_frame_rate
-            start_time = start_frame/src_fps
+            start_time = start_frame / src_fps
             # todo something replicated here, already have start and stop times
-            stop_time = stop_frame/src_fps
+            stop_time = stop_frame / src_fps
 
             logger.info('DVS frame summary: mode=duration, fps={}, accumulation={}s, '
                         'num_frames={}, dvs_duration={}s, playback_duration={}s'
@@ -689,15 +695,20 @@ def main():
         v2e_quit(1)
     num_pixels = output_width*output_height
 
-    hdr: bool = args.hdr
+    hdr = args.hdr
     if hdr:
-        logger.info('Treating input as HDR logarithmic video')
+        if args.hdr_disable_prepro:
+            logger.info('Treating input as preprocessed HDR logarithmic input (preprocessing disabled)')
+        else:
+            logger.info('Treating input as HDR floating-point gray scale in [0,1] with internal preprocessing')
 
     scidvs: bool = args.scidvs
     if scidvs:
         logger.info('Simulating SCIDVS pixel')
 
     try:
+        effective_dvs_seed, auto_seeded = resolve_dvs_emulator_seed(
+            args.dvs_emulator_seed)
         effective_dvs_seed, auto_seeded = resolve_dvs_emulator_seed(
             args.dvs_emulator_seed)
     except ValueError as e:
@@ -735,6 +746,7 @@ def main():
         v2ce_nonuniform_burst_timestamps=v2ce_nonuniform_burst_timestamps,
         v2ce_burst_timestamps_mode=v2ce_burst_timestamps_mode,
         seed=effective_dvs_seed,
+        hdr_disable_prepro=args.hdr_disable_prepro,
         output_folder=output_folder, dvs_h5=dvs_h5, dvs_aedat2=dvs_aedat2, dvs_aedat4=dvs_aedat4,
         aedat4_camera_name=aedat4_camera_name,
         dvs_text=dvs_text, show_dvs_model_state=args.show_dvs_model_state,

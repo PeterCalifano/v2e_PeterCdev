@@ -394,11 +394,12 @@ Input file handling:
                         E.g. CROP=(100,100,0,0) crops 100 pixels from left and
                         right of input frames. CROP can also be specified as
                         L,R,T,B without ()
-  --hdr                 Treat input video as high dynamic range (HDR)
-                        logarithmic, i.e. skip the linlog conversion step. Use
-                        --hdr for HDR input with floating point gray scale
-                        input videos. Units of log input are based on white
-                        255 pixels have values ln(255)=5.5441
+  --hdr                 Treat input as high dynamic range (HDR) floating point
+                        gray scale in [0,1]. EventEmulator applies
+                        preprocessing internally.
+  --hdr_disable_prepro  Disable HDR preprocessing in EventEmulator and treat
+                        input as already preprocessed log values (white at
+                        ln(255)=5.5441).
 Synthetic input:
   --synthetic_input SYNTHETIC_INPUT
                         Input from class SYNTHETIC_INPUT that has methods

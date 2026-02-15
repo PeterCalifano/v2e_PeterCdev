@@ -93,7 +93,7 @@
 - Changed so that DVS parameter selection is by default None, so that user selections are not overridden. Added warning that such options will be overridden by using the --dvs_params option.
 - Set default 'noisy' shot noise rate to more realistic 5Hz/pixel value.
 - Fixed (we hope) very subtle bug in generating ideal ON and OFF events where the ON events were not followed by OFF events for a moving white dot. This was caused by floating point roundoff that caused bits to disappear when adding and subtracting the threshold from the memorized log intensity frame, resulting in nonsymetrical output.
-- Changed lin_log function to include floating point rounding to 5 digits precision, to prevent subtle and hard to understand effects in synthetic input.
+- Changed Map_linear_to_log_luminance function to include floating point rounding to 5 digits precision, to prevent subtle and hard to understand effects in synthetic input.
 
 # v1.3.1
 - initial release to accompany the v2e arxiv paper

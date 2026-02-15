@@ -87,7 +87,7 @@ pip install "tbb>=2021.6"
 
 ---
 
-### 3. **Cython for `lin_log` Transformation**
+### 3. **Cython for `Map_linear_to_log_luminance` Transformation**
 
 **Target**: `v2ecore/emulator_utils.py` lines 17-46
 
@@ -256,7 +256,7 @@ def generate_shot_noise(...):
 
 1. **Upgrade TBB** → Enable parallel histogram (4-8x for rendering)
 2. **Add `parallel=True` to shot noise** → 1.5-2x for noise generation
-3. **Cython for lin_log** → 2-3x for lin_log (if float64 precision validated)
+3. **Cython for Map_linear_to_log_luminance** → 2-3x for Map_linear_to_log_luminance (if float64 precision validated)
 
 **Estimated total speedup**: 1.3-1.5x end-to-end
 
@@ -328,7 +328,7 @@ setup(
 
 ### Precision Requirements
 
-- **lin_log** requires float64 (documented in TODO comment)
+- **Map_linear_to_log_luminance** requires float64 (documented in TODO comment)
 - Test extensively if attempting float32 conversion
 
 ### Maintainability
@@ -353,7 +353,7 @@ setup(
 
 2. **Short-term**:
    - Upgrade TBB for parallel histogram
-   - Add Cython version of lin_log (with float64)
+   - Add Cython version of Map_linear_to_log_luminance (with float64)
 
 3. **Long-term**:
    - Consider PyTorch C++ extension for entire emulator core

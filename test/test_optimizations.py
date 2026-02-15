@@ -9,7 +9,7 @@ import pytest
 torch = pytest.importorskip("torch")
 
 from v2ecore.emulator_utils import (
-    lin_log,
+    Map_linear_to_log_luminance,
     LowPassFilter,
     compute_event_map,
 )
@@ -18,21 +18,21 @@ from v2ecore.emulator import EventEmulator
 
 
 # ---------------------------------------------------------------------------
-# lin_log tests
+# Map_linear_to_log_luminance tests
 # ---------------------------------------------------------------------------
 
 class TestLinLog:
-    """Verify lin_log behaviour and precision properties."""
+    """Verify Map_linear_to_log_luminance behaviour and precision properties."""
 
     def test_output_dtype_is_float32(self):
         x = torch.randint(0, 256, (16, 16), dtype=torch.float32)
-        y = lin_log(x)
+        y = Map_linear_to_log_luminance(x)
         assert y.dtype == torch.float32
 
     def test_known_values(self):
         """Below threshold → linear scaled; above → log."""
         x = torch.tensor([1.0, 10.0, 20.0, 100.0, 255.0])
-        y = lin_log(x, threshold=20)
+        y = Map_linear_to_log_luminance(x, threshold=20)
         # Below threshold: y = x * (1/threshold) * ln(threshold)
         import math
         f = (1.0 / 20) * math.log(20)
@@ -41,16 +41,16 @@ class TestLinLog:
         assert torch.allclose(y[3:], torch.tensor([math.log(100), math.log(255)], dtype=torch.float32), atol=1e-5)
 
     def test_monotonicity(self):
-        """lin_log should be monotonically increasing."""
+        """Map_linear_to_log_luminance should be monotonically increasing."""
         x = torch.arange(1, 256, dtype=torch.float32)
-        y = lin_log(x)
+        y = Map_linear_to_log_luminance(x)
         assert torch.all(torch.diff(y) >= 0)
 
     def test_continuity_at_threshold(self):
         """Values just below and at threshold should be very close."""
         t = 20.0
         x = torch.tensor([t - 0.01, t, t + 0.01])
-        y = lin_log(x, threshold=t)
+        y = Map_linear_to_log_luminance(x, threshold=t)
         # Check no discontinuity
         assert (y[2] - y[0]).abs() < 0.01
 

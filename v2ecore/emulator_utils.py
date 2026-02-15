@@ -14,12 +14,12 @@ import torch.nn.functional as F
 logger = logging.getLogger(__name__)
 
 
-def lin_log(x, threshold=20):
+def Map_linear_to_log_luminance(x, threshold=20):
     """
     linear mapping + logarithmic mapping.
 
     :param x: float or ndarray
-        the input linear value in range 0-255 TODO assumes 8 bit
+        the input linear value in range 0-255
     :param threshold: float threshold 0-255
         the threshold for transition from linear to log mapping
 
@@ -33,11 +33,11 @@ def lin_log(x, threshold=20):
     if x.dtype is not torch.float64:  # note float64 to get rounding to work
         x = x.double()
 
-    f = (1./threshold) * math.log(threshold)
+    lin_to_log_scale = (1./threshold) * math.log(threshold)
 
     # KEY[D-LINLOG]: Fig. 5D in Hu et al. 2021 (v2e paper): piecewise
     # lin-log mapping from luma Y to log-domain brightness L.
-    y = torch.where(x <= threshold, x*f, torch.log(x))
+    y = torch.where(x <= threshold, x*lin_to_log_scale, torch.log(x))
 
     # important, we do a floating point round to some digits of precision
     # to avoid that adding threshold and subtracting it again results
@@ -586,6 +586,6 @@ if __name__ == "__main__":
     temp_input = torch.randint(0, 256, (1280, 720), dtype=torch.float32).cuda()
 
     for i in range(1000):
-        temp_out = lin_log(temp_input, threshold=20)
+        temp_out = Map_linear_to_log_luminance(temp_input, threshold=20)
 
     pass
