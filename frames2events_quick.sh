@@ -223,8 +223,16 @@ fi
 # Determine video args based on the presence of the --show_video flag
 if [[ "$@" == *"--show_video"* ]]; then
     video_args="--skip_video_output --show_dvs_model_state all"
+    model_state_summary="all"
 else
     video_args=""
+    model_state_summary="diff_frame,log_new_frame,lp_log_frame"
+fi
+
+# Default: dump diff_frame, log_new_frame, and lp_log_frame model-state videos
+model_state_args="--show_dvs_model_state diff_frame log_new_frame lp_log_frame"
+if [[ "$@" == *"--show_video"* ]]; then
+    model_state_args=""
 fi
 
 if [ -n "$last_time" ]; then
@@ -254,6 +262,7 @@ log_info "  output_folder=$output_folder"
 log_info "  from_slomo_output=$from_slomo_output"
 log_info "  input_fps=${framerate_input}Hz, threshold=$event_thr, sigma=$sigma_thr, batch_size=$batch_size_slomo"
 log_info "  resolution=$resolution_summary, timestamp=$timestamp_summary, auto_timestamp=$auto_timestamp, cutoff=$cutoff_summary"
+log_info "  model_state_dump=$model_state_summary (saved via --save_dvs_model_state)"
 log_info "  output_event_file=$event_stream_filename (AEDAT-4.0)"
 
 ### Call python main script
@@ -271,7 +280,7 @@ python "$v2e_location" -i $input_folder \
         --dvs_aedat4 $event_stream_filename \
         --output_folder $output_folder $overwrite_output_folder_option \
         --batch_size $batch_size_slomo \
-        $video_args $cut_off_frequency $output_resolution_args $disable_slomo \
+        $model_state_args $video_args $cut_off_frequency $output_resolution_args $disable_slomo \
         $last_time_args
         #--ignore-gooey
         #--slomo_stats_plot
