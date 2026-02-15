@@ -20,6 +20,7 @@ if [ $? != 0 ]; then
 fi
 
 disable_slomo_flag=false
+show_video_flag=false
 output_resolution=""
 use_dvxplorer=true
 
@@ -72,6 +73,7 @@ while true; do
             shift 2
             ;;
         -s|--show_video)
+            show_video_flag=true
             shift 1
             ;;
         --disable_slomo)
@@ -220,18 +222,18 @@ if [ "$from_slomo_output" = true ]; then
     overwrite_output_folder_option="--overwrite"
 fi
 
-# Determine video args based on the presence of the --show_video flag
-if [[ "$@" == *"--show_video"* ]]; then
-    video_args="--skip_video_output --show_dvs_model_state all"
+# Determine video args based on the parsed --show_video flag
+if [ "$show_video_flag" = true ]; then
+    video_args="--show_dvs_model_state all"
     model_state_summary="all"
 else
-    video_args=""
+    video_args="--skip_video_output"
     model_state_summary="diff_frame,log_new_frame,lp_log_frame"
 fi
 
 # Default: dump diff_frame, log_new_frame, and lp_log_frame model-state videos
 model_state_args="--show_dvs_model_state diff_frame log_new_frame lp_log_frame"
-if [[ "$@" == *"--show_video"* ]]; then
+if [ "$show_video_flag" = true ]; then
     model_state_args=""
 fi
 
@@ -241,9 +243,9 @@ else
     last_time_args=""
 fi
 
-# Override video args to skip if tmux
-if [ -n "$TMUX" ] && [ -n "$video_args" ]; then
-    video_args=""
+# In tmux, force non-video mode for robust headless runs
+if [ -n "$TMUX" ] && [ "$show_video_flag" = true ]; then
+    video_args="--skip_video_output"
 fi
 
 
