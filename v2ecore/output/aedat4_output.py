@@ -15,12 +15,17 @@ class AEDat4Output:
     """
 
 
-    def __init__(self, filepath: str, output_width=640, output_height=480):
+    def __init__(
+            self,
+            filepath: str,
+            output_width: int = 640,
+            output_height: int = 480,
+            camera_name: str | None = None):
         self.filepath = filepath
         self.numEventsWritten = 0
         self.numOnEvents=0
         self.numOffEvents=0
-        logging.info('opening AEDAT-4.0 output file {} in binary mode'.format(filepath))
+        logger.debug('opening AEDAT-4.0 output file {} in binary mode'.format(filepath))
 
         self.flipy = False 
         self.flipx = False 
@@ -28,9 +33,10 @@ class AEDat4Output:
         self.sizey = output_height
 
         camera_resolution = (output_width, output_height)
+        selected_camera_name = camera_name if camera_name is not None else "DVXplorer"
         # Event only configuration
         config = dv.io.MonoCameraWriter.EventOnlyConfig(
-            "DVXplorer_sample", camera_resolution)
+            selected_camera_name, camera_resolution)
 
         # Create the writer instance, it will only have a single event output stream.
         self.writer = dv.io.MonoCameraWriter(filepath, config)

@@ -59,7 +59,7 @@ if args.dvs240==False and args.dvs346==False:
 output_width, output_height = set_output_dimension(
     None, None,
     False, args.dvs240, args.dvs346,
-    False, False,
+    False, False, False,
     logger)
 
 def cleanup():
@@ -182,5 +182,4 @@ if __name__ == "__main__":
     except Exception as e:
         logger.warning('{}: could not open {} in desktop'.format(e,output_folder))
     quit()
-
 

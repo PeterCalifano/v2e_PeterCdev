@@ -152,6 +152,7 @@ class EventEmulator(object):
             dvs_h5: str = None,
             dvs_aedat2: str = None,
             dvs_aedat4: str = None,
+            aedat4_camera_name: str | None = None,
             dvs_text: str = None,
             # change as you like to see 'baseLogFrame',
             # 'lpLogFrame', 'diff_frame'
@@ -202,6 +203,8 @@ class EventEmulator(object):
             fix it to nonzero value to get same mismatch every time
         dvs_aedat2, dvs_aedat4, dvs_h5, dvs_text: str
             names of output data files or None
+        aedat4_camera_name: str | None
+            optional AEDAT-4.0 camera name metadata
         show_dvs_model_state: List[str],
             None or 'new_frame','diff_frame' etc; see EventEmulator.MODEL_STATES
         output_folder: str
@@ -321,6 +324,7 @@ class EventEmulator(object):
         # aedat or text output
         self.dvs_aedat2 = dvs_aedat2
         self.dvs_aedat4 = dvs_aedat4
+        self.aedat4_camera_name = aedat4_camera_name
         self.dvs_text = dvs_text
 
         # event stats
@@ -430,7 +434,8 @@ class EventEmulator(object):
                 self.dvs_aedat4 = AEDat4Output(
                     path,
                     output_width=self.output_width,
-                    output_height=self.output_height)
+                    output_height=self.output_height,
+                    camera_name=self.aedat4_camera_name)
 
             if dvs_text:
                 path = os.path.join(self.output_folder, dvs_text)

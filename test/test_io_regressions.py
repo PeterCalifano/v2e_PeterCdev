@@ -12,6 +12,7 @@ pytest.importorskip("easygui")
 
 from v2ecore.v2e_utils import ImageFolderReader
 from v2ecore.v2e_utils import read_aedat_txt_events
+from v2ecore.v2e_utils import set_output_dimension
 from v2ecore.v2e_utils import set_output_folder
 
 
@@ -259,6 +260,18 @@ def test_aedat4_writer_uses_requested_resolution(monkeypatch: pytest.MonkeyPatch
     writer.close()
 
 
+def test_aedat4_writer_uses_requested_camera_name(monkeypatch: pytest.MonkeyPatch):
+    pytest.importorskip("dv_processing")
+    aedat4_module = importlib.import_module("v2ecore.output.aedat4_output")
+    fake_dv_module = _Build_fake_dv_module()
+    monkeypatch.setattr(aedat4_module, "dv", fake_dv_module)
+
+    writer = aedat4_module.AEDat4Output(
+        "dummy.aedat4", output_width=123, output_height=45, camera_name="DVXplorer")
+    assert writer.writer.config.camera_name == "DVXplorer"
+    writer.close()
+
+
 def test_aedat4_writer_flushes_each_append_call(monkeypatch: pytest.MonkeyPatch):
     pytest.importorskip("dv_processing")
     aedat4_module = importlib.import_module("v2ecore.output.aedat4_output")
@@ -404,3 +417,63 @@ def test_main_passes_iebcs_and_v2ce_flags_to_emulator(monkeypatch: pytest.Monkey
     assert captured_kwargs["iebcs_resample_thresholds_on_event"] is True
     assert captured_kwargs["v2ce_nonuniform_burst_timestamps"] is True
     assert captured_kwargs["v2ce_burst_timestamps_mode"] == "slope"
+
+
+def test_set_output_dimension_supports_dvxplorer_preset():
+    width, height = set_output_dimension(
+        output_width=None,
+        output_height=None,
+        dvs128=False,
+        dvs240=False,
+        dvs346=False,
+        dvs640=False,
+        dvs1024=False,
+        dvxplorer=True,
+        logger=logging.getLogger(__name__),
+    )
+    assert (width, height) == (640, 480)
+
+
+def test_main_scales_large_resolution_even_when_slomo_disabled(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    v2e_module = _Import_local_v2e_module()
+
+    class StopAfterDimensions(RuntimeError):
+        pass
+
+    captured_dimensions: dict[str, int] = {}
+
+    class FakeEventEmulator:
+        def __init__(self, *args, **kwargs):
+            captured_dimensions["output_width"] = kwargs["output_width"]
+            captured_dimensions["output_height"] = kwargs["output_height"]
+            raise StopAfterDimensions("dimensions captured")
+
+    input_folder = tmp_path / "input_frames_large_resolution"
+    input_folder.mkdir()
+    large_image = np.full((1536, 2048, 3), 100, dtype=np.uint8)
+    assert cv2.imwrite(str(input_folder / "00000000.png"), large_image)
+    assert cv2.imwrite(str(input_folder / "00000001.png"), large_image)
+
+    output_folder = tmp_path / "output_large_resolution"
+    args = _Build_v2e_args([
+        "--input", str(input_folder),
+        "--input_frame_rate", "1",
+        "--output_folder", str(output_folder),
+        "--unique_output_folder", "false",
+        "--overwrite",
+        "--disable_slomo",
+        "--skip_video_output",
+        "--no_preview",
+    ])
+
+    monkeypatch.setattr(v2e_module, "EventEmulator", FakeEventEmulator)
+    monkeypatch.setattr(v2e_module, "Gooey", lambda *args, **kwargs: (lambda: None), raising=False)
+    monkeypatch.setattr(v2e_module, "get_args", lambda: (args, [], "v2e test"))
+    monkeypatch.setattr(v2e_module, "inputVideoFileDialog", lambda: str(input_folder))
+    monkeypatch.setattr(v2e_module.desktop, "open", lambda *_args, **_kwargs: None)
+
+    with pytest.raises(StopAfterDimensions):
+        v2e_module.main()
+
+    assert captured_dimensions["output_width"] == 1024
+    assert captured_dimensions["output_height"] == 768

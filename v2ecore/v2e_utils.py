@@ -178,7 +178,7 @@ def set_output_folder(output_folder,
 
 
 def set_output_dimension(output_width, output_height,
-                         dvs128, dvs240, dvs346, dvs640, dvs1024,
+                         dvs128, dvs240, dvs346, dvs640, dvs1024, dvxplorer,
                          logger):
     """Return output_height and output_width based on arguments."""
 
@@ -192,6 +192,8 @@ def set_output_dimension(output_width, output_height,
         output_width, output_height = 640, 480
     elif dvs1024:
         output_width, output_height = 1024, 768
+    elif dvxplorer:
+        output_width, output_height = 640, 480
 
     if (output_width is None) or (output_height is None):
         logger.warning(

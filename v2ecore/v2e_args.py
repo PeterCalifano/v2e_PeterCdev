@@ -276,6 +276,9 @@ def v2e_args(parser):
     camAction.add_argument(
         '--dvs1024', action='store_true',
         help='Set size for 1024x768 DVS (not supported for AEDAT-2.0 output since there is no jAER DVS1024 camera')
+    camAction.add_argument(
+        '--dvxplorer', action='store_true',
+        help='Set size for 640x480 DVXplorer (Inivation)')
 
     # slow motion frame synthesis
     sloMoGroup = parser.add_argument_group(
@@ -442,6 +445,11 @@ def v2e_args(parser):
         "--dvs_aedat4", type=output_file_check, default=None,
         help="Output DV AEDAT-4.0 event file "
              "To suppress, supply argument None. ")
+    dvsEventOutputGroup.add_argument(
+        "--aedat4_camera_name", type=str, default=None,
+        help="Camera name metadata for AEDAT-4.0 output. "
+             "If omitted and --dvxplorer is set, uses DVXplorer; "
+             "otherwise defaults to DVXplorer.")
     dvsEventOutputGroup.add_argument(
         "--dvs_text", type=output_file_check, default=None,
         help="Output DVS events as text file with one event per "
