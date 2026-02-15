@@ -341,11 +341,11 @@ def v2e_args(parser):
              "from left and right of input frames."
              " CROP can also be specified as L,R,T,B without ()")
     inGroup.add_argument('--hdr',action='store_true',
-                         help='Treat input video as high dynamic range (HDR) logarithmic, '
-                              'i.e. skip the linlog conversion step. '
-                              'Use --hdr for HDR input with floating '
-                              'point gray scale input videos. Units of log input are based '
-                              'on white 255 pixels have values ln(255)=5.5441')
+                         help='Treat input as high dynamic range (HDR) floating point gray scale in [0,1]. '
+                              'EventEmulator applies preprocessing internally.')
+    inGroup.add_argument('--hdr_disable_prepro', action='store_true',
+                         help='Disable HDR preprocessing in EventEmulator and treat input as already preprocessed '
+                              'log values (white at ln(255)=5.5441).')
 
     # synthetic input handling
     syntheticInputGroup = parser.add_argument_group('Synthetic input')

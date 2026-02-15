@@ -9,12 +9,12 @@ log_info() {
 }
 
 function usage() {
-    echo -e "Usage: $0 required args [optional args] \nValid arguments: \n -i|--input_folder input_folder -f|--framerate_input input_framerate \n [-o|--output output_folder] \n [-t|--threshold event_threshold] \n [-r|--resolution_output width,height] \n [--dvxplorer] \n [-c|--cut_off frequency] \n [-d|--deviation_thr sigma_threshold] \n [-b|--batch_size batch_size] \n [-g|--grid_time_resolution timestamp_resolution] \n [-a|--auto_timestamp] \n [-s|--show_video] \n [--disable_slomo] \n [-l|--last_time last_time_value] \n"
+    echo -e "Usage: $0 required args [optional args] \nValid arguments: \n -i|--input_folder input_folder -f|--framerate_input input_framerate \n [-o|--output output_folder] \n [-t|--threshold event_threshold] \n [-r|--resolution_output width,height] \n [--dvxplorer] \n [-c|--cut_off frequency] \n [-d|--deviation_thr sigma_threshold] \n [-b|--batch_size batch_size] \n [-g|--grid_time_resolution timestamp_resolution] \n [-a|--auto_timestamp] \n [-s|--show_video] \n [--disable_slomo] \n [--hdr] \n [--hdr_disable_prepro] \n [-l|--last_time last_time_value] \n"
     exit 1
 }
 
 # Parse options using getopt for short and long options
-TEMP=$(getopt -o a,i:,f:,o:,t:,b:,r:,c:,d:,g:,h,s,l: --long input_folder:,framerate_input:,output_folder:,threshold:,batch_size:,resolution_output:,cut_off:,deviation_thr:,grid_time_resolution:,auto_timestamp,help,show_video,disable_slomo,last_time:,dvxplorer -n "$0" -- "$@")
+TEMP=$(getopt -o a,i:,f:,o:,t:,b:,r:,c:,d:,g:,h,s,l: --long input_folder:,framerate_input:,output_folder:,threshold:,batch_size:,resolution_output:,cut_off:,deviation_thr:,grid_time_resolution:,auto_timestamp,help,show_video,disable_slomo,last_time:,dvxplorer,hdr,hdr_disable_prepro -n "$0" -- "$@")
 if [ $? != 0 ]; then
     usage
 fi
@@ -22,6 +22,8 @@ fi
 disable_slomo_flag=false
 output_resolution=""
 use_dvxplorer=true
+hdr_flag=false
+hdr_disable_prepro_flag=false
 
 eval set -- "$TEMP"
 while true; do
@@ -76,6 +78,14 @@ while true; do
             ;;
         --disable_slomo)
             disable_slomo_flag=true
+            shift 1
+            ;;
+        --hdr)
+            hdr_flag=true
+            shift 1
+            ;;
+        --hdr_disable_prepro)
+            hdr_disable_prepro_flag=true
             shift 1
             ;;
         -h|--help)
@@ -241,6 +251,14 @@ else
     last_time_args=""
 fi
 
+hdr_args=""
+if [ "$hdr_flag" = true ]; then
+    hdr_args="--hdr"
+fi
+if [ "$hdr_disable_prepro_flag" = true ]; then
+    hdr_args="$hdr_args --hdr_disable_prepro"
+fi
+
 # Override video args to skip if tmux
 if [ -n "$TMUX" ] && [ -n "$video_args" ]; then
     video_args=""
@@ -262,6 +280,7 @@ log_info "  output_folder=$output_folder"
 log_info "  from_slomo_output=$from_slomo_output"
 log_info "  input_fps=${framerate_input}Hz, threshold=$event_thr, sigma=$sigma_thr, batch_size=$batch_size_slomo"
 log_info "  resolution=$resolution_summary, timestamp=$timestamp_summary, auto_timestamp=$auto_timestamp, cutoff=$cutoff_summary"
+log_info "  hdr=${hdr_flag}, hdr_disable_prepro=${hdr_disable_prepro_flag}"
 log_info "  model_state_dump=$model_state_summary (saved via --save_dvs_model_state)"
 log_info "  output_event_file=$event_stream_filename (AEDAT-4.0)"
 
@@ -281,6 +300,6 @@ python "$v2e_location" -i $input_folder \
         --output_folder $output_folder $overwrite_output_folder_option \
         --batch_size $batch_size_slomo \
         $model_state_args $video_args $cut_off_frequency $output_resolution_args $disable_slomo \
-        $last_time_args
+        $last_time_args $hdr_args
         #--ignore-gooey
         #--slomo_stats_plot

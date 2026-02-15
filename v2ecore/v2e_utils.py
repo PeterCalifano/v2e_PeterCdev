@@ -11,6 +11,10 @@ from tkinter import filedialog
 from numba import njit
 from engineering_notation import EngNumber as eng
 from pathlib import Path
+from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+from collections import deque
+import matplotlib
+import matplotlib.pyplot as plt
 
 # adjust for different sensor than DAVIS346
 DVS_WIDTH, DVS_HEIGHT = 346, 260
@@ -500,3 +504,203 @@ def hist2d_numba_seq(tracks, bins, ranges):
             H[int(i), int(j)] += 1
 
     return H
+
+
+class EventOnlineViewer3D:
+    def __init__(self,
+                 xlim,
+                 ylim,
+                 t_window_s=0.01,
+                 max_events=100_000,
+                 view="t"):
+        """
+        xlim, ylim : tuple
+            Fixed spatial limits (never changed).
+        t_window : float
+            Time window size [s] to keep (sliding window).
+        max_events : int
+            Max events rendered (visual subsampling only).
+        view : {"t", "x", "y"}
+            Camera view direction.
+        """
+
+        self.max_events = max_events
+        self.t_window = t_window_s
+        self.view = view
+
+        # Rolling buffer of events
+        self.event_buffer = deque()
+
+        plt.ion()
+        self.fig = plt.figure(figsize=(12, 8))
+        self.ax = self.fig.add_subplot(111, projection="3d")
+
+        # Apply visual style with black background
+        self.fig.patch.set_facecolor("black")
+        self.ax.set_facecolor("black")
+
+        self.ax.tick_params(colors="white")
+        for spine in self.ax.spines.values():
+            spine.set_color("white")
+
+        self.ax.xaxis.label.set_color("white")
+        self.ax.yaxis.label.set_color("white")
+        self.ax.zaxis.label.set_color("white")
+
+        self.ax.grid(True, color="white", alpha=0.2)
+
+        # Setup axis of 3D plot
+        self.ax.set_xlim(xlim)
+        self.ax.set_ylim(ylim)
+        self.ax.set_zlim(0.0, t_window_s)
+
+        self.ax.set_xlabel("x [px]")
+        self.ax.set_ylabel("y [px]")
+        self.ax.set_zlabel("t [s]")
+        self.ax.set_title("Event cloud (x, y, t)", color="white")
+
+        if view == "t":
+            self.ax.view_init(elev=90, azim=-90)
+        elif view == "x":
+            self.ax.view_init(elev=0, azim=0)
+        elif view == "y":
+            self.ax.view_init(elev=0, azim=90)
+
+        # Image-style view from time axis
+        self.ax.invert_yaxis()
+
+        # Create empty scatter once
+        self.scatter_on = self.ax.scatter(
+            [], [], [],
+            c="lime",
+            s=1,
+            alpha=1.0
+        )
+        self.scatter_off = self.ax.scatter(
+            [], [], [],
+            c="red",
+            s=1,
+            alpha=1.0
+        )
+
+        plt.show(block=False)
+
+    def update(self, events):
+        """
+        events: ndarray [N,4] -> (t, x, y, polarity)
+        polarity: +1 / 1 -> ON, 0 / -1 -> OFF
+        """
+
+        if events is None or events.size == 0:
+            return
+
+        # Append events to buffer
+        for ev in events:
+            self.event_buffer.append(ev)
+
+        t_now = events[-1, 0]
+        t_min = t_now - self.t_window
+
+        # Drop old events
+        while self.event_buffer and self.event_buffer[0][0] < t_min:
+            self.event_buffer.popleft()
+
+        if not self.event_buffer:
+            return
+
+        buf = np.asarray(self.event_buffer)
+
+        # Subsample for visualization
+        if buf.shape[0] > self.max_events:
+            idx = np.random.choice(
+                buf.shape[0], self.max_events, replace=False)
+            buf = buf[idx]
+
+        # Split polarity
+        t = buf[:, 0] - t_min
+        x = buf[:, 1]
+        y = buf[:, 2]
+        p = buf[:, 3]
+
+        on_mask = p > 0
+        off_mask = ~on_mask
+
+        # Update ON events (green)
+        self.scatter_on._offsets3d = (
+            x[on_mask],
+            y[on_mask],
+            t[on_mask]
+        )
+
+        # Update OFF events (red)
+        self.scatter_off._offsets3d = (
+            x[off_mask],
+            y[off_mask],
+            t[off_mask]
+        )
+
+        plt.pause(0.001)
+
+    @staticmethod
+    def visualize_events_3d(events,
+                            max_events=200_000,
+                            title="Event cloud (x, y, t)"):
+        """
+        events: ndarray [N, 4] -> (t, x, y, polarity)
+        """
+
+        if events is None or events.size == 0:
+            print("No events to visualize")
+            return
+
+        # Subsample for speed if needed
+        if events.shape[0] > max_events:
+            idx = np.random.choice(events.shape[0], max_events, replace=False)
+            events = events[idx]
+
+        t = events[:, 0]
+        x = events[:, 1]
+        y = events[:, 2]
+        p = events[:, 3]
+
+        fig = plt.figure(figsize=(8, 6))
+        ax = fig.add_subplot(111, projection='3d')
+
+        sc = ax.scatter(
+            x, y, t,
+            c=p,
+            cmap='coolwarm',
+            s=1,
+            alpha=0.8
+        )
+
+        ax.set_xlabel("x [px]")
+        ax.set_ylabel("y [px]")
+        ax.set_zlabel("t [s]")
+        ax.set_title(title)
+
+        plt.colorbar(sc, label="polarity")
+        plt.tight_layout()
+        plt.show()
+
+    @staticmethod
+    def visualize_xt(events):
+        plt.figure(figsize=(7, 4))
+        plt.scatter(events[:, 1], events[:, 0],
+                    c=events[:, 3], s=1, cmap='coolwarm')
+        plt.xlabel("x [px]")
+        plt.ylabel("t [s]")
+        plt.title("x-t event projection")
+        plt.tight_layout()
+        plt.show()
+
+    @staticmethod
+    def visualize_yt(events):
+        plt.figure(figsize=(7, 4))
+        plt.scatter(events[:, 2], events[:, 0],
+                    c=events[:, 3], s=1, cmap='coolwarm')
+        plt.xlabel("y [px]")
+        plt.ylabel("t [s]")
+        plt.title("y-t event projection")
+        plt.tight_layout()
+        plt.show()
