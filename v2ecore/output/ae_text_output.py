@@ -34,7 +34,7 @@ class DVSTextOutput:
         self.flipy=False
         self.sizex=346
         self.sizey=260 # adjust to your needs
-        logging.info('opening text DVS output file {}'.format(filepath))
+        logger.debug('opening text DVS output file {}'.format(filepath))
         self.file = open(filepath, 'w')
         self._writeHeader()
         atexit.register(self.cleanup)

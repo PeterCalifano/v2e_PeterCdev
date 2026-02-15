@@ -40,6 +40,7 @@ class EventRenderer(object):
             output_path=None,
             dvs_vid=None,
             preview=False,
+            color_mode='green_red',
             exposure_mode=ExposureMode.DURATION,  # 'count', 'area-count'
             exposure_value=1 / 300.0,
             area_dimension=None,
@@ -104,6 +105,7 @@ class EventRenderer(object):
 
         self.emulator = None
         self.preview = preview
+        self.color_mode = color_mode
         self.preview_resized = False  # flag to keep from sizing the preview
         self.numFramesWritten = 0
         atexit.register(self.cleanup)
@@ -324,6 +326,25 @@ class EventRenderer(object):
 
                 # img output is 0-1 range
                 img = normalize_frame(self.currentFrame, self.full_scale_count)
+                if self.color_mode == 'green_red':
+                    color_img = np.zeros(
+                        (self.height, self.width, 3), dtype=np.uint8)
+                    current_frame_int = self.currentFrame.astype(np.int16)
+                    on_mask = current_frame_int > 0
+                    off_mask = current_frame_int < 0
+                    if np.any(on_mask):
+                        on_values = np.clip(
+                            (current_frame_int[on_mask] * 255) //
+                            self.full_scale_count, 0, 255).astype(np.uint8)
+                        color_img[on_mask, 1] = on_values
+                    if np.any(off_mask):
+                        off_values = np.clip(
+                            ((-current_frame_int[off_mask]) * 255) //
+                            self.full_scale_count, 0, 255).astype(np.uint8)
+                        color_img[off_mask, 2] = off_values
+                else:
+                    color_img = cv2.cvtColor(
+                        (img * 255).astype(np.uint8), cv2.COLOR_GRAY2BGR)
 
                 # done with this frame, allocate new one in next loop
                 self.currentFrame = None
@@ -335,9 +356,7 @@ class EventRenderer(object):
                         img[np.newaxis, ...]
 
                 if self.video_output_file:
-                    self.video_output_file.write(
-                        cv2.cvtColor((img * 255).astype(np.uint8),
-                                     cv2.COLOR_GRAY2BGR))
+                    self.video_output_file.write(color_img)
                     t = None
 
                     if self.exposure_mode==ExposureMode.SOURCE:
@@ -355,7 +374,10 @@ class EventRenderer(object):
                 if self.preview:
                     name = str(self.video_output_file_name)
                     cv2.namedWindow(name, cv2.WINDOW_NORMAL)
-                    cv2.imshow(name, img)
+                    if self.color_mode == 'green_red':
+                        cv2.imshow(name, color_img)
+                    else:
+                        cv2.imshow(name, img)
                     if not self.preview_resized:
                         cv2.resizeWindow(name, 800, 600)
                         self.preview_resized = True
