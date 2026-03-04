@@ -65,21 +65,33 @@ pytest -q
 # Run emulator regression tests only
 pytest -q test/test_emulator_*.py
 
+# Run error-model / eventstream benchmark smoke tests
+pytest -q test/test_eventstream_benchmark.py
+
 # Run specific test file
 pytest -q test/test_io_regressions.py
+
+# Run optimization correctness tests
+pytest -q test/test_optimizations.py
+
+# Run micro-benchmarks (prints speedup ratios, use -s)
+pytest -q test/test_perf_benchmarks.py -s
+
+# Run end-to-end throughput benchmarks
+pytest -q test/test_end_to_end_perf.py -s
 ```
 
 ### Benchmarking and Profiling
 
 ```bash
 # Core emulator timing
-python scripts/benchmark_emulator.py
+python v2ecore/benchmarks/benchmark_emulator.py
 
 # Core emulator profiling with cProfile
-python scripts/benchmark_emulator.py --profile
+python v2ecore/benchmarks/benchmark_emulator.py --profile
 
-# End-to-end CLI benchmark
-python scripts/benchmark_v2e_cli.py
+# Comparative error model benchmark (baseline / V2CE / IEBCS profiles)
+python scripts/benchmark_error_models_eventstream.py --output_dir output/benchmarks
 
 # 3D event visualization example
 python scripts/plot_events_3d_example.py --scenario moving_blob
@@ -98,7 +110,7 @@ python scripts/plot_events_3d_example.py --scenario moving_blob
 ### Key Modules (v2ecore/)
 
 - **emulator.py**: Stateful DVS pixel-array emulator - main event generation logic and primary performance hotspot
-- **emulator_utils.py**: Low-level numerical kernels (lin-log transform, IIR lowpass filtering, event quantization, noise)
+- **emulator_utils.py**: Low-level numerical kernels (`Map_linear_to_log_luminance`, IIR lowpass filtering, event quantization, noise)
 - **renderer.py**: Event-to-frame accumulation, preview display, video export
 - **slomo.py**: SuperSloMo temporal interpolation
 - **v2e_args.py**: Centralized CLI argument definitions and exposure mode parsing
@@ -162,6 +174,18 @@ All extensions are **opt-in** and **disabled by default**. See `docs/README_erro
 --iebcs_refractory_us 700
 ```
 
+## Optimization Notes
+
+Applied optimizations (see `docs/OPTIMIZATION_SUMMARY.md` for full analysis):
+
+- **`LowPassFilter` scalar ε path** (`emulator_utils.py`): uses in-place `lerp_()` — 2.3x speedup
+- **CPU-GPU transfers** (`emulator.py`): `.item()` instead of `.cpu().numpy().item()`, `.cpu().numpy()` instead of `.cpu().data.numpy()` — 1.3-1.5x speedup
+- **`Map_linear_to_log_luminance`**: requires float64 internally for OFF-event numerical stability — see `TODO (TBC)` comment before attempting float32 conversion
+- **Event buffer pre-allocation**: tested but reverted — `torch.cat` is faster on CUDA (see comment at `signal_event_chunks` declaration in `emulator.py`)
+- **Parallel histogram** (`v2e_utils.py`): implemented but requires TBB ≥ 2021.6 (interface version 12060); auto-disabled below threshold
+
+Advanced optimization opportunities (custom CUDA kernels, Cython, TorchScript): `docs/ADVANCED_OPTIMIZATION_OPPORTUNITIES.md`
+
 ## Development Notes
 
 ### Correctness Invariants
@@ -178,7 +202,7 @@ When editing core event generation code, preserve:
 ### Performance Hotspots
 
 - `v2ecore/emulator.py`: Iterative event generation loop and per-iteration event extraction
-- `v2ecore/emulator_utils.py`: Lin-log transform and lowpass processing
+- `v2ecore/emulator_utils.py`: `Map_linear_to_log_luminance` and `LowPassFilter` (scalar ε path uses in-place `lerp_` — 2.3x speedup over allocating form)
 - `v2e.py` + `v2ecore/slomo.py`: Frame I/O and batch buffering
 
 ### Optimization Strategy
@@ -231,6 +255,6 @@ python v2e.py --synthetic_input scripts.particles
 
 ## Key References
 
-- v2e paper: Hu, Liu, Delbruck. "v2e: From Video Frames to Realistic DVS Events" (CVPRW 2021) - https://arxiv.org/abs/2006.07722
-- DVS noise analysis: Graca, Delbruck. "Unraveling the Paradox of Intensity-Dependent DVS Pixel Noise" - https://arxiv.org/abs/2109.08640
-- v2e home page: https://sites.google.com/view/video2events/home
+- v2e paper: Hu, Liu, Delbruck. "v2e: From Video Frames to Realistic DVS Events" (CVPRW 2021) - <https://arxiv.org/abs/2006.07722>
+- DVS noise analysis: Graca, Delbruck. "Unraveling the Paradox of Intensity-Dependent DVS Pixel Noise" - <https://arxiv.org/abs/2109.08640>
+- v2e home page: <https://sites.google.com/view/video2events/home>

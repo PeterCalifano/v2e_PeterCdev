@@ -51,9 +51,9 @@ Developer workflow
 - Run unit tests:
   `pytest -q`
 - Run focused core benchmarks:
-  `python scripts/benchmark_emulator.py`
+  `python v2ecore/benchmarks/benchmark_emulator.py`
 - Run cProfile for emulator hot path:
-  `python scripts/benchmark_emulator.py --profile`
+  `python v2ecore/benchmarks/benchmark_emulator.py --profile`
 - Run a short end-to-end CLI benchmark:
   `python scripts/benchmark_v2e_cli.py`
 

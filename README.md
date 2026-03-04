@@ -129,14 +129,16 @@ to run the example below.
   [`docs/core_model_mapping.md`](docs/core_model_mapping.md)
 + Error-model extension map (IEBCS + V2CE-inspired):
   [`docs/README_error_models_extensions.md`](docs/README_error_models_extensions.md)
++ Comparative benchmark + visualization guide:
+  [`README_comparative_benchmark.md`](README_comparative_benchmark.md)
 + Core module overview:
   [`v2ecore/README.md`](v2ecore/README.md)
 + Fast sanity tests:
   `pytest -q`
 + Timing/profiling helpers:
-  `python scripts/benchmark_emulator.py`
+  `python v2ecore/benchmarks/benchmark_emulator.py`
   and
-  `python scripts/benchmark_v2e_cli.py`
+  `python scripts/benchmark_error_models_eventstream.py`
 
 ## IEBCS Stage-2 Extensions (Optional)
 

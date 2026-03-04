@@ -10,16 +10,7 @@
 			"path": "../EventVision_for_SpaceNav"
 		},
 		{
-			"path": "../../rendering-sw/corto_PeterCdev"
-		},
-		{
-			"path": "../../ML-repos/pyTorchAutoForge"
-		},
-		{
 			"path": "../../../../../media/peterc/Main/linux_data/datasets"
-		},
-		{
-			"path": "../../rendering-sw/DatasetGeneratorLib"
 		},
 		{
 			"path": "../EventDataGenerationLib"

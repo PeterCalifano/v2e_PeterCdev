@@ -25,6 +25,12 @@ Primary tests:
 - `test/test_emulator_regression.py`
 - `test/test_io_regressions.py`
 
+Comparative benchmark and visualization:
+
+- `README_comparative_benchmark.md`
+- Runner:
+  `python scripts/benchmark_error_models_eventstream.py`
+
 ## Compatibility Guarantee
 
 All new features are opt-in and disabled by default. With default flags,

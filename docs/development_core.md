@@ -60,9 +60,9 @@ Preferred order:
 ## Benchmarking workflow
 
 - Core emulator timing:
-  `python scripts/benchmark_emulator.py`
+  `python v2ecore/benchmarks/benchmark_emulator.py`
 - Core emulator profiling:
-  `python scripts/benchmark_emulator.py --profile`
+  `python v2ecore/benchmarks/benchmark_emulator.py --profile`
 - Short CLI pipeline timing:
   `python scripts/benchmark_v2e_cli.py`
 - Dummy-motion 3D event visualization:

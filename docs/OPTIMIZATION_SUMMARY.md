@@ -73,7 +73,7 @@ Tool: `test/test_perf_benchmarks.py`
 Platform: CUDA
 Resolution: DAVIS346 (346x260)
 Frames: 30-60
-Tool: `test/test_end_to_end_perf.py`, `scripts/benchmark_emulator.py`
+Tool: `test/test_end_to_end_perf.py`, `v2ecore/benchmarks/benchmark_emulator.py`
 
 **DAVIS346 Performance:**
 
