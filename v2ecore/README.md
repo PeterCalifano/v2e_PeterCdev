@@ -49,16 +49,17 @@ Developer workflow
 ------------------
 
 - Run unit tests:
-  `pytest -q`
+  `python -m pytest -q`
 - Run focused core benchmarks:
   `python v2ecore/benchmarks/benchmark_emulator.py`
 - Run cProfile for emulator hot path:
   `python v2ecore/benchmarks/benchmark_emulator.py --profile`
-- Run a short end-to-end CLI benchmark:
-  `python scripts/benchmark_v2e_cli.py`
+- Run end-to-end throughput benchmarks:
+  `python -m pytest -q test/test_end_to_end_perf.py -s`
 
 For deeper architecture and optimization guidance, see:
 `docs/development_core.md`.
 
-For paper-to-code mapping of the event model with `#KEY[...]` tags, see:
+For paper-to-code mapping of the event model with document anchor IDs and line
+links, see:
 `docs/core_model_mapping.md`.

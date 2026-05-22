@@ -3,7 +3,8 @@
 This document is aimed at contributors working on v2e internals,
 especially event-generation performance and correctness.
 
-For a paper-aligned math-to-code map of the event model and `#KEY[...]` tags,
+For a paper-aligned math-to-code map of the event model and the anchor IDs used
+throughout the docs,
 see [`docs/core_model_mapping.md`](core_model_mapping.md).
 
 ## Repository map (core-focused)
@@ -63,8 +64,8 @@ Preferred order:
   `python v2ecore/benchmarks/benchmark_emulator.py`
 - Core emulator profiling:
   `python v2ecore/benchmarks/benchmark_emulator.py --profile`
-- Short CLI pipeline timing:
-  `python scripts/benchmark_v2e_cli.py`
+- Comparative IEBCS / V2CE benchmark:
+  `python v2ecore/benchmarks/benchmark_error_models_eventstream.py`
 - Dummy-motion 3D event visualization:
   `python scripts/plot_events_3d_example.py --scenario moving_blob --save output/events_3d_blob.png --no_show`
 
@@ -79,9 +80,9 @@ Record benchmark parameters when sharing results:
 ## Testing workflow
 
 - Run all tests:
-  `pytest -q`
+  `python -m pytest -q`
 - Run emulator regressions only:
-  `pytest -q test/test_emulator_*.py`
+  `python -m pytest -q test/test_emulator_*.py`
 
 Recommended regression checks for core changes:
 
@@ -92,5 +93,6 @@ Recommended regression checks for core changes:
 
 ## Notes for `frames2events_quick.sh`
 
-The script must pass CLI argument names that exist in `v2ecore/v2e_args.py`.
-Use `--auto_timestamp_resolution`, not `--auto_timestamp`.
+The helper script accepts `-a|--auto_timestamp` for convenience, but it must
+expand that option to the real `v2e.py` CLI flag
+`--auto_timestamp_resolution` defined in `v2ecore/v2e_args.py`.

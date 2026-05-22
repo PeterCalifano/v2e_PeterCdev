@@ -22,7 +22,7 @@ The synthetic scenario is inspired by the IEBCS sensitivity protocol and V2CE
 burst-timestamp analysis goals.
 
 - IEBCS reports square-wave stimulation at `10 Hz` and evaluates sensitivity
-  versus contrast amplitude ramps up to `0.5 log` units.
+  versus contrast amplitude ramps up to `0.5 log_e` units.
 - V2CE highlights timestamp-layering artifacts from even/random timestamp
   placement and motivates better temporal placement quality metrics.
 
@@ -79,6 +79,13 @@ All IEBCS and V2CE flags enabled except histogram-noise.
   quantization)
 - per-pixel normalized event-rate map
 
+Current code definitions:
+
+```text
+timestamp_layering_score = n_unique(round(t_us)) / N_events
+event_rate_map(y, x) = count(y, x) / N_events
+```
+
 ### Pairwise (vs baseline)
 
 - `delta_events_pct`
@@ -86,6 +93,19 @@ All IEBCS and V2CE flags enabled except histogram-noise.
 - `timestamp_w1_us`
 - `rate_map_l1`
 - `layering_delta`
+
+Current code definitions:
+
+```text
+delta_events_pct = 100 * (N - N_baseline) / max(N_baseline, 1)
+delta_on_off_ratio = (ON / max(OFF, 1)) - (ON_baseline / max(OFF_baseline, 1))
+timestamp_w1_us = mean_q |Q_profile(q) - Q_baseline(q)| * 1e6
+rate_map_l1 = mean(|R_profile - R_baseline|)
+layering_delta = layering_score_profile - layering_score_baseline
+```
+
+`timestamp_w1_us` is an approximate 1D Wasserstein-1 distance computed from
+timestamp quantiles rather than a full transport solve.
 
 ### Pseudo-reference
 
@@ -95,6 +115,14 @@ as a proxy reference:
 - `METE_like_us` (timestamp distribution distance)
 - `NOE_pct` (number-of-events error)
 - `GPER_like_l1` (rate-map distance)
+
+Current code definitions:
+
+```text
+METE_like_us = mean_q |Q_profile(q) - Q_reference(q)| * 1e6
+NOE_pct = 100 * |N - N_reference| / max(N_reference, 1)
+GPER_like_l1 = mean(|R_profile - R_reference|)
+```
 
 ## Visualizations
 
@@ -118,7 +146,7 @@ The benchmark generates:
 Main script:
 
 ```bash
-python scripts/benchmark_error_models_eventstream.py --help
+python v2ecore/benchmarks/benchmark_error_models_eventstream.py --help
 ```
 
 Key options:
@@ -135,7 +163,7 @@ Key options:
 ### 1) Quick smoke run (CPU)
 
 ```bash
-python scripts/benchmark_error_models_eventstream.py \
+python v2ecore/benchmarks/benchmark_error_models_eventstream.py \
   --device cpu \
   --width 128 --height 96 \
   --duration_s 0.3 --fps 40 \
@@ -145,7 +173,7 @@ python scripts/benchmark_error_models_eventstream.py \
 ### 2) Full comparative run (auto device)
 
 ```bash
-python scripts/benchmark_error_models_eventstream.py \
+python v2ecore/benchmarks/benchmark_error_models_eventstream.py \
   --device auto \
   --width 346 --height 260 \
   --duration_s 1.0 --fps 120 \
@@ -156,7 +184,7 @@ python scripts/benchmark_error_models_eventstream.py \
 ### 3) Plot-only regeneration from saved report
 
 ```bash
-python scripts/benchmark_error_models_eventstream.py \
+python v2ecore/benchmarks/benchmark_error_models_eventstream.py \
   --plot_only_from_json output/benchmarks_comparative/benchmark_error_models_eventstream_YYYYMMDD_HHMMSS_xxxxxx.json \
   --output_dir output/benchmarks_comparative/replots
 ```
@@ -190,4 +218,5 @@ Per run, the script writes:
 
 - Joubert et al., *Event Camera Simulator Improvements via Characterized
   Parameters*, Frontiers in Neuroscience, 2021.
-- V2CE paper/project resources for event timestamp placement evaluation.
+- Zhang et al., *V2CE: Video to Continuous Events Simulator*, ICRA 2024 /
+  arXiv:2309.08891.

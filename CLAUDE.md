@@ -8,19 +8,20 @@ v2e converts conventional video frames into realistic synthetic DVS (Dynamic Vis
 
 ## Environment Setup
 
-v2e uses a conda environment with Python 3.10 and GPU-accelerated PyTorch:
+The maintained repo environment is described by `environment.yml` and currently
+uses Python 3.11 with GPU-accelerated PyTorch:
 
 ```bash
 # Create and activate environment
-conda create -n v2e python=3.10
+conda env create -f environment.yml
 conda activate v2e
 
-# Install PyTorch with CUDA support first (conda)
-conda install pytorch torchvision cudatoolkit=11.3 -c pytorch
-
-# Install v2e and remaining dependencies (pip, editable mode)
+# Install v2e in editable mode
 python -m pip install -e .
 ```
+
+If you build the environment manually instead of using `environment.yml`, use
+Python 3.11 to match the checked-in dependency set.
 
 Download the pre-trained SuperSloMo model from Google Drive (SuperSloMo39.ckpt, 151 MB) and save to the `input/` folder.
 
@@ -60,25 +61,25 @@ python v2e.py --no_preview
 
 ```bash
 # Run all tests
-pytest -q
+python -m pytest -q
 
 # Run emulator regression tests only
-pytest -q test/test_emulator_*.py
+python -m pytest -q test/test_emulator_*.py
 
 # Run error-model / eventstream benchmark smoke tests
-pytest -q test/test_eventstream_benchmark.py
+python -m pytest -q test/test_eventstream_benchmark.py
 
 # Run specific test file
-pytest -q test/test_io_regressions.py
+python -m pytest -q test/test_io_regressions.py
 
 # Run optimization correctness tests
-pytest -q test/test_optimizations.py
+python -m pytest -q test/test_optimizations.py
 
 # Run micro-benchmarks (prints speedup ratios, use -s)
-pytest -q test/test_perf_benchmarks.py -s
+python -m pytest -q test/test_perf_benchmarks.py -s
 
 # Run end-to-end throughput benchmarks
-pytest -q test/test_end_to_end_perf.py -s
+python -m pytest -q test/test_end_to_end_perf.py -s
 ```
 
 ### Benchmarking and Profiling
@@ -91,7 +92,7 @@ python v2ecore/benchmarks/benchmark_emulator.py
 python v2ecore/benchmarks/benchmark_emulator.py --profile
 
 # Comparative error model benchmark (baseline / V2CE / IEBCS profiles)
-python scripts/benchmark_error_models_eventstream.py --output_dir output/benchmarks
+python v2ecore/benchmarks/benchmark_error_models_eventstream.py --output_dir output/benchmarks
 
 # 3D event visualization example
 python scripts/plot_events_3d_example.py --scenario moving_blob
@@ -118,7 +119,10 @@ python scripts/plot_events_3d_example.py --scenario moving_blob
 
 ### Event Model Stages
 
-The DVS event model follows stages documented in `docs/core_model_mapping.md` with `#KEY[...]` tags:
+The DVS event model follows the stages documented in
+`docs/core_model_mapping.md`. That document uses stable anchor IDs and line
+references; this branch does not currently embed literal `#KEY[...]` comments
+in source.
 
 1. **Lin-log encoding**: Piecewise linear/log brightness mapping (`#KEY[D-LINLOG]`)
 2. **Photoreceptor lowpass**: Intensity-dependent IIR filter (`#KEY[E-LPF-*]`)
@@ -128,7 +132,8 @@ The DVS event model follows stages documented in `docs/core_model_mapping.md` wi
 6. **Noise models**: Photoreceptor noise or shot noise (`#KEY[G-*]`)
 7. **Refractory filtering**: Per-pixel minimum inter-spike interval (`#KEY[H-REFRACTORY-EXT]`)
 
-Use `rg -n "#KEY\["` to find all tagged code locations mapping paper equations to implementation.
+Use the line links in `docs/core_model_mapping.md` to jump from the paper model
+to implementation locations.
 
 ## IEBCS and V2CE Error Model Extensions
 
@@ -174,6 +179,10 @@ All extensions are **opt-in** and **disabled by default**. See `docs/README_erro
 --iebcs_refractory_us 700
 ```
 
+Note: the CLI exposes preset histogram names, but this repository snapshot does
+not ship the matching `input/iebcs_noise/*.npy` assets. Use explicit file mode
+unless you add those preset files locally.
+
 ## Optimization Notes
 
 Applied optimizations (see `docs/OPTIMIZATION_SUMMARY.md` for full analysis):
@@ -214,7 +223,8 @@ When editing core event generation code, preserve:
 
 ### Working with Code
 
-- The codebase uses `#KEY[...]` tags to map paper math to implementation (see `docs/core_model_mapping.md`)
+- The codebase uses the anchor IDs documented in `docs/core_model_mapping.md`
+  to map paper math to implementation
 - All event timestamps use seconds (float) internally
 - CLI arguments in `v2ecore/v2e_args.py` use microseconds for latency/timing parameters (converted to seconds in emulator)
 - SuperSloMo checkpoint must be at `input/SuperSloMo39.ckpt` by default (override with `--slomo_model`)
@@ -235,7 +245,9 @@ When editing core event generation code, preserve:
 
 ### Synthetic Input
 
-Create custom input by subclassing `scripts/base_synthetic_input.py` and override `next_frame()`. Examples: `scripts/particles.py`, `scripts/moving_dot.py`. Use with:
+Create custom input by subclassing `v2ecore/base_synthetic_input.py` and
+override `next_frame()`. Examples: `scripts/particles.py`,
+`scripts/moving_dot.py`. Use with:
 
 ```bash
 python v2e.py --synthetic_input scripts.particles
@@ -257,4 +269,6 @@ python v2e.py --synthetic_input scripts.particles
 
 - v2e paper: Hu, Liu, Delbruck. "v2e: From Video Frames to Realistic DVS Events" (CVPRW 2021) - <https://arxiv.org/abs/2006.07722>
 - DVS noise analysis: Graca, Delbruck. "Unraveling the Paradox of Intensity-Dependent DVS Pixel Noise" - <https://arxiv.org/abs/2109.08640>
+- IEBCS reference: Joubert et al. "Event Camera Simulator Improvements via Characterized Parameters" (Frontiers in Neuroscience 2021) - <https://www.frontiersin.org/journals/neuroscience/articles/10.3389/fnins.2021.702765/full>
+- V2CE reference: Zhang et al. "V2CE: Video to Continuous Events Simulator" (ICRA 2024) - <https://arxiv.org/abs/2309.08891>
 - v2e home page: <https://sites.google.com/view/video2events/home>

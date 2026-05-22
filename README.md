@@ -156,18 +156,18 @@ to run the example below.
 `v2e` now includes additional opt-in IEBCS-inspired models, all disabled by
 default:
 
-- Contrast-dependent latency:
++ Contrast-dependent latency:
   `--iebcs_contrast_latency_model true`
-- Histogram-based background noise:
++ Histogram-based background noise:
   `--iebcs_hist_noise_model true`
-- Refractory state coupling:
++ Refractory state coupling:
   `--iebcs_refractory_state_coupling true`
 
 Noise distributions can be provided with presets or explicit file paths:
 
-- Preset mode:
++ Preset mode:
   `--iebcs_noise_source preset --iebcs_noise_preset 161lux`
-- File mode:
++ File mode:
   `--iebcs_noise_source files --iebcs_noise_pos_path ... --iebcs_noise_neg_path ...`
 
 The CLI supports preset mode, but this repository snapshot does not ship the
@@ -181,19 +181,19 @@ for full parameter details and interaction rules.
 
 ## Capability Summary
 
-- Inputs:
++ Inputs:
   regular video files, folders of image frames, and Python synthetic-input
   generators via `--synthetic_input`; HDR and preprocessed-log HDR inputs are
   also supported.
-- Temporal modeling:
++ Temporal modeling:
   optional SuperSloMo interpolation for sub-frame timing, or direct source-rate
   processing with `--disable_slomo`.
-- Event models:
++ Event models:
   core v2e photoreceptor / threshold / refractory / leak / shot-noise model;
   optional photoreceptor-noise path; optional CSDVS and SCIDVS variants;
   optional IEBCS-inspired latency/noise/refractory extensions; optional
   V2CE-inspired non-uniform intra-frame timestamp placement.
-- Outputs:
++ Outputs:
   DVS preview / AVI rendering, original and slomo AVI side products, HDF5,
   AEDAT-2.0, AEDAT-4.0, whitespace text output, optional signal/noise labels,
   and recorded single-pixel state dumps.

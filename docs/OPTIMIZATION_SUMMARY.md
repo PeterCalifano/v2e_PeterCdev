@@ -110,12 +110,10 @@ Tool: `test/test_end_to_end_perf.py`, `v2ecore/benchmarks/benchmark_emulator.py`
 
 ### Test Coverage
 
-- Total tests: **81 tests** (all passing)
-  - 18 optimization unit tests (correctness)
-  - 42 existing regression tests (21 emulator + 21 I/O)
-  - 11 micro-benchmark tests
-  - 3 end-to-end performance tests
-  - 7 other tests
+- Validation at review time:
+  `conda run -n v2e python -m pytest -q`
+- Result:
+  **83 tests passing**
 
 ## Implementation Details
 
@@ -208,7 +206,7 @@ def hist2d_numba(tracks, bins, ranges):
 
 All optimizations verified through:
 
-1. **Correctness**: 84 tests passing (21 new + 63 existing)
+1. **Correctness**: 83 tests passing in the validated `v2e` conda environment
 2. **Performance**: Micro-benchmarks show 1.27-2.29x for successful optimizations
 3. **End-to-end**: Emulator maintains 81-97 FPS on DAVIS346 at 346x260
 4. **Regression**: No existing tests broken, no output format changes
@@ -224,4 +222,4 @@ Event buffer pre-allocation was tested but reverted (0.51x regression - torch.ca
 
 Overall emulator performance: **97 FPS** on DAVIS346 (346x260) with photoreceptor noise enabled.
 
-**All 81 tests passing** (18 new optimization tests + 63 existing).
+**All 83 tests passing** in the validated `v2e` conda environment.

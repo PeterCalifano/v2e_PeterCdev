@@ -3,6 +3,10 @@
 This document maps the event-generation model from the v2e paper to the
 implementation in `v2ecore/emulator.py` and `v2ecore/emulator_utils.py`.
 
+The symbolic anchor IDs below are documentation identifiers used to keep the
+mapping readable. In this branch they are tracked in docs, not as literal
+`#KEY[...]` comments embedded in source.
+
 ## Primary references
 
 - Hu, Y., Liu, S.-C., Delbruck, T. (2021). *v2e: From Video Frames to Realistic
@@ -23,24 +27,33 @@ implementation in `v2ecore/emulator.py` and `v2ecore/emulator_utils.py`.
 
 ## Model equations and where they live
 
-1. Time discretization:
-   `dt = t_k - t_{k-1}`.
-2. Lin-log encoding:
-   `L = f(I)` with piecewise linear/log mapping.
-3. Photoreceptor low-pass:
-   `tau = 1 / (2*pi*f_c)`,
-   `epsilon ~ dt/tau` (scaled by intensity),
-   `L_lp <- (1-epsilon)L_lp + epsilon L`.
-4. Event quantization from contrast:
-   `k+ = floor(max(DeltaL, 0)/theta+)`,
-   `k- = floor(max(-DeltaL, 0)/theta-)`.
-5. Memory update (reset-by-threshold increments):
-   `L_mem <- L_mem + k+*theta+ - k-*theta-`.
-6. Leak term (noise-driven drift):
-   `L_mem <- L_mem - dt * r_leak * theta+`.
-7. Temporal shot noise:
-   per-pixel Bernoulli draws with probabilities proportional to
-   `shot_rate * dt` and threshold-dependent scaling.
+```text
+1. Time discretization
+   dt = t_k - t_{k-1}
+
+2. Lin-log encoding
+   L = f(I)
+
+3. Photoreceptor low-pass
+   tau = 1 / (2 * pi * f_c)
+   epsilon = min(inten01 * dt / tau, 1)      when intensity scaling is active
+   epsilon = dt / tau                        otherwise
+   L_lp,new = L_lp + epsilon * (L - L_lp)
+
+4. Event quantization from contrast
+   k_on  = floor(max( DeltaL, 0) / theta_on)
+   k_off = floor(max(-DeltaL, 0) / theta_off)
+
+5. Memory update (reset-by-threshold increments)
+   L_mem,new = L_mem + k_on * theta_on - k_off * theta_off
+
+6. Leak term
+   L_mem,new = L_mem - dt * r_leak * theta_on
+
+7. Temporal shot noise
+   Bernoulli ON/OFF draws with probabilities proportional to shot_rate * dt
+   and scaled by the nominal-to-actual threshold ratio.
+```
 
 ## Stage-by-stage mapping (paper blocks -> code)
 
@@ -153,9 +166,9 @@ implementation in `v2ecore/emulator.py` and `v2ecore/emulator_utils.py`.
 
 ## Quick navigation
 
-- Find all core tags:
-  `rg -n "#KEY\\[" v2ecore/emulator.py v2ecore/emulator_utils.py`
 - Primary entry point:
   [`v2ecore/emulator.py`](../v2ecore/emulator.py)
 - Math kernels:
   [`v2ecore/emulator_utils.py`](../v2ecore/emulator_utils.py)
+- Useful symbol search:
+  `rg -n "generate_events|Map_linear_to_log_luminance|LowPassFilter|compute_event_map" v2ecore/emulator.py v2ecore/emulator_utils.py`
