@@ -9,7 +9,7 @@ log_info() {
 }
 
 function usage() {
-    echo -e "Usage: $0 required args [optional args] \nValid arguments: \n -i|--input_folder input_folder -f|--framerate_input input_framerate \n [-o|--output output_folder] \n [-t|--threshold event_threshold] \n [-r|--resolution_output width,height] \n [--dvxplorer] \n [-c|--cut_off frequency] \n [-d|--deviation_thr sigma_threshold] \n [-b|--batch_size batch_size] \n [-g|--grid_time_resolution timestamp_resolution] \n [-a|--auto_timestamp] \n [-s|--show_video] \n [--disable_slomo] \n [--hdr] \n [--hdr_disable_prepro] \n [-l|--last_time last_time_value] \n"
+    echo -e "Usage: $0 required args [optional args] \nValid arguments: \n -i|--input_folder input_folder -f|--framerate_input input_framerate \n [-o|--output output_folder] \n [-t|--threshold event_threshold] \n [-r|--resolution_output width,height] \n [--dvxplorer] \n [-c|--cut_off frequency] \n [-d|--deviation_thr sigma_threshold] \n [-b|--batch_size batch_size] \n [-g|--grid_time_resolution timestamp_resolution] \n [-a|--auto_timestamp]  # expands to v2e --auto_timestamp_resolution \n [-s|--show_video] \n [--disable_slomo] \n [--hdr] \n [--hdr_disable_prepro] \n [-l|--last_time last_time_value] \n"
     exit 1
 }
 
@@ -157,7 +157,7 @@ v2e_location=$(which v2e)
 echo "Using v2e location: $v2e_location"
 
 if [ -z "$v2e_location" ]; then
-    echo "v2e is not in the PATH. Have you installed v2e by running install_v2e_venv?"
+    echo "v2e is not in the PATH. Have you installed v2e in the active environment?"
     exit 1
 fi
 
