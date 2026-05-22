@@ -54,18 +54,27 @@ If you don't want to install, try [opening v2e in google colab](https://colab.re
 There are 3 general steps
 
 1. Make a _conda_ environment
-2. Install _pytoch_ and other _conda_ distributed packages to this environment
-3. Install the rest of the packages and _v2e_ to the conda enviroment with _pip_.
+2. Install _pytorch_ and other _conda_ distributed packages to this environment
+3. Install the rest of the packages and _v2e_ to the conda environment with _pip_.
 
 _pip_ is needed because some packages are not availble from the conda repositories. It is important to go in this order because _conda_ in general is not aware of _pip_ installs.
 
 ### Make conda environment
 
-Install _v2e_ to a separate Python environment
-such as `conda` environment:
+The repository ships an `environment.yml` that matches the maintained dev
+setup. The simplest path is:
 
 ```bash
-conda create -n v2e python=3.10  # create a new environment
+conda env create -f environment.yml
+conda activate v2e
+python -m pip install -e .
+```
+
+If you prefer a manual environment, create a separate Python environment such
+as:
+
+```bash
+conda create -n v2e python=3.11  # matches environment.yml
 conda activate v2e  # activate the environment
 ```
 
@@ -125,20 +134,22 @@ to run the example below.
 
 + Core architecture and optimization notes:
   [`docs/development_core.md`](docs/development_core.md)
-+ Event-model math to code map (`#KEY` tags):
++ Event-model math to code map:
   [`docs/core_model_mapping.md`](docs/core_model_mapping.md)
 + Error-model extension map (IEBCS + V2CE-inspired):
   [`docs/README_error_models_extensions.md`](docs/README_error_models_extensions.md)
++ Capability / validation / workspace integration review:
+  [`docs/repo_capabilities_status.md`](docs/repo_capabilities_status.md)
 + Comparative benchmark + visualization guide:
   [`README_comparative_benchmark.md`](README_comparative_benchmark.md)
 + Core module overview:
   [`v2ecore/README.md`](v2ecore/README.md)
 + Fast sanity tests:
-  `pytest -q`
+  `python -m pytest -q`
 + Timing/profiling helpers:
   `python v2ecore/benchmarks/benchmark_emulator.py`
   and
-  `python scripts/benchmark_error_models_eventstream.py`
+  `python v2ecore/benchmarks/benchmark_error_models_eventstream.py`
 
 ## IEBCS Stage-2 Extensions (Optional)
 
@@ -159,9 +170,37 @@ Noise distributions can be provided with presets or explicit file paths:
 - File mode:
   `--iebcs_noise_source files --iebcs_noise_pos_path ... --iebcs_noise_neg_path ...`
 
+The CLI supports preset mode, but this repository snapshot does not ship the
+`input/iebcs_noise/*.npy` histogram assets. To use histogram noise today,
+either add the expected preset files under `input/iebcs_noise/` or use
+explicit `files` mode.
+
 See:
 `docs/README_error_models_extensions.md`
 for full parameter details and interaction rules.
+
+## Capability Summary
+
+- Inputs:
+  regular video files, folders of image frames, and Python synthetic-input
+  generators via `--synthetic_input`; HDR and preprocessed-log HDR inputs are
+  also supported.
+- Temporal modeling:
+  optional SuperSloMo interpolation for sub-frame timing, or direct source-rate
+  processing with `--disable_slomo`.
+- Event models:
+  core v2e photoreceptor / threshold / refractory / leak / shot-noise model;
+  optional photoreceptor-noise path; optional CSDVS and SCIDVS variants;
+  optional IEBCS-inspired latency/noise/refractory extensions; optional
+  V2CE-inspired non-uniform intra-frame timestamp placement.
+- Outputs:
+  DVS preview / AVI rendering, original and slomo AVI side products, HDF5,
+  AEDAT-2.0, AEDAT-4.0, whitespace text output, optional signal/noise labels,
+  and recorded single-pixel state dumps.
+
+See [`docs/repo_capabilities_status.md`](docs/repo_capabilities_status.md) for
+an input -> models -> output summary tied to current tests and neighboring
+workspace repositories.
 
 ## Usage
 
@@ -176,6 +215,14 @@ Don't be intimidated by the huge number of options. Running _v2e.py_ with no arg
 **Hint:** Note the options _[--dvs128 | --dvs240 | --dvs346 | --dvs640 | --dvs1024]_; they set output size and width to popular DVS cameras.
 
 **On headless platforms**, with no graphics output, use --no_preview option to suppress the OpenCV windows.
+
+The pasted help block below is illustrative, not exhaustive. For the current
+authoritative CLI surface, including AEDAT-4.0 output, DVXplorer preset, and
+IEBCS / V2CE-inspired options, run:
+
+```bash
+python v2e.py -h
+```
 
 ```
 usage: v2e.py [-h] [-o OUTPUT_FOLDER] [--avi_frame_rate AVI_FRAME_RATE]
@@ -520,9 +567,11 @@ You can specify particles as the class that generates input frames to generate D
 v2e --synthetic_input scripts.particles ...
 ````
 
-You synthetic input class should subclass _base_synthetic_class.py_. You should override the constructor and the _next_frame()_ method.
+Your synthetic input class should subclass `base_synthetic_input` from
+`v2ecore/base_synthetic_input.py`. Override the constructor and the
+`next_frame()` method.
 
-+ See [base_synthetic_input.py](https://github.com/SensorsINI/v2e/blob/master/scripts/base_synthetic_input.py) for more information.
++ See [v2ecore/base_synthetic_input.py](https://github.com/SensorsINI/v2e/blob/master/v2ecore/base_synthetic_input.py) for more information.
 + You can pass command line arguments into your class; see [particles.py](https://github.com/SensorsINI/v2e/blob/master/scripts/particles.py) for example.
 
 ## Model parameters
@@ -562,7 +611,35 @@ There are several different 'frame rates' in v2e. On opening the input video, v2
 
 ### Effect of multiple events per (sub) frame
 
-Anytime a source (or upsampled source) video generates more than 1 event per frame, these events need to be distributed over the time between frames. v2e arbitrarily stacks them as shown in the example below, resulting in pyramids of events and periodic overall bursts of events at each frame.  I.e. v2e first computes the maximum number of events by any pixel, then it subdivides the interframe interval by this number, then it puts all pixels with 1 event at the frame, then pixels with 2 events have thier events placed at the first sub-interval and so on. The reduce this effect, use a smaller timestamp resolution.
+In the default legacy path, anytime a source (or upsampled source) video
+generates more than 1 event per frame, these events need to be distributed over
+the time between frames. v2e linearly subdivides the inter-frame interval as
+shown in the example below, resulting in pyramids of events and periodic
+overall bursts of events at each frame. I.e. v2e first computes the maximum
+number of events by any pixel, then it subdivides the interframe interval by
+this number, then it puts all pixels with 1 event at the frame, then pixels
+with 2 events have their events placed at the first sub-interval and so on.
+Optional `--v2ce_nonuniform_burst_timestamps` and IEBCS latency extensions
+modify this default timing behavior. To reduce layering in the default mode,
+use a smaller timestamp resolution.
+
+In symbols, if one frame interval is `Delta t = t_frame - t_prev` and the
+largest burst count in that interval is `N`, then the legacy linear placement
+uses
+
+```text
+t_i = t_prev + i * Delta t / N,   i = 1, 2, ..., N
+```
+
+When `--v2ce_nonuniform_burst_timestamps true` is enabled, `v2e` keeps the same
+interval `(t_prev, t_frame]` but replaces this linear subdivision with either:
+
+```text
+random mode:  t_i = t_prev + Delta t * sort(U_i)
+slope mode:   t_i = t_prev + Delta t * sort(sqrt(U_i))
+```
+
+where each `U_i` is sampled from `Uniform(0, 1)`.
 
  ![v2e_pyramid](media/v2e-pyr.gif)
 
