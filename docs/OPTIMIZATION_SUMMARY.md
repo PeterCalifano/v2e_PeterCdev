@@ -4,6 +4,17 @@ Date: 2026-02-15
 Branch: `feature/extend_error_models_IEBCS_V2CE`
 Baseline commit: `01c0155` ([MAJOR] Implement relevant IEBCS features)
 
+Note: this is the historical Python/PyTorch optimization pass. The active
+porting roadmap, including July 4 shared CUDA backend benchmark evidence, is
+tracked in
+[`doc/developments/performance_optimization_opportunities.md`](../doc/developments/performance_optimization_opportunities.md).
+
+Do not treat the fixed speedups, FPS, TBB version, or test count below as current
+branch results. A later rerun produced materially different timing ratios, the
+current environment has a newer TBB runtime, and the scalar low-pass path has an
+open stability-clamp defect. Current correctness and validation status is in
+[`repo_capabilities_status.md`](repo_capabilities_status.md).
+
 ## Optimization Overview
 
 Implemented targeted performance optimizations focusing on:
@@ -114,6 +125,8 @@ Tool: `test/test_end_to_end_perf.py`, `v2ecore/benchmarks/benchmark_emulator.py`
   `conda run -n v2e python -m pytest -q`
 - Result:
   **83 tests passing**
+- Current branch validation is tracked in
+  [`docs/repo_capabilities_status.md`](repo_capabilities_status.md).
 
 ## Implementation Details
 
@@ -190,26 +203,40 @@ def hist2d_numba(tracks, bins, ranges):
 
 ### Kept
 
-1. ✅ LowPassFilter scalar ε optimization (clear 2.29x win)
-2. ✅ CPU-GPU transfer cleanup (1.27x, 1.51x wins)
-3. ✅ All new unit tests and benchmarks
-4. ✅ Event buffer comment documenting attempted optimization and why it was reverted
+- [x] LowPassFilter scalar epsilon optimization (clear 2.29x win)
+- [x] CPU-GPU transfer cleanup (1.27x, 1.51x wins)
+- [x] Unit tests and benchmarks from the optimization pass
+- [x] Event buffer comment documenting attempted optimization and why it was
+      reverted
 
 ### Future Work
 
-1. 🔄 Upgrade Numba/TBB to enable parallel histogram (TBB >= 2021.6)
-2. 🔍 Profile end-to-end to identify if event buffer has hidden costs
-3. 🔍 Investigate other PyTorch kernel fusion opportunities
-4. 🔍 Consider float32 path for Map_linear_to_log_luminance with extensive regression testing
+- [x] The current environment is no longer blocked on the historical TBB
+      version recorded above.
+- [ ] Add a test/benchmark that actually activates the
+      `>1,000,000`-track parallel histogram branch.
+- [ ] Fix and test the scalar low-pass large-epsilon correctness defect before
+      retaining its optimization.
+- [ ] Profile end-to-end to identify if event buffer has hidden costs
+- [ ] Investigate other PyTorch kernel fusion opportunities
+- [ ] Consider a float32 path for `Map_linear_to_log_luminance` only with
+      extensive regression testing
+- [ ] Use the July 4 benchmark evidence to guide shared C++/CUDA backend work
+      rather than treating Cython/TorchScript as the primary porting path
+- [ ] Use the active development roadmap for larger work:
+      [`doc/developments/performance_optimization_opportunities.md`](../doc/developments/performance_optimization_opportunities.md)
 
 ## Validation
 
-All optimizations verified through:
+Optimizations in this pass were verified through:
 
-1. **Correctness**: 83 tests passing in the validated `v2e` conda environment
-2. **Performance**: Micro-benchmarks show 1.27-2.29x for successful optimizations
-3. **End-to-end**: Emulator maintains 81-97 FPS on DAVIS346 at 346x260
-4. **Regression**: No existing tests broken, no output format changes
+- Correctness: 83 tests passing in the validated `v2e` conda environment at
+  review time
+- Performance: micro-benchmarks showed 1.27-2.29x for successful optimizations
+- End-to-end: emulator maintained 81-97 FPS on DAVIS346 at 346x260
+- Regression: no existing tests broken, no output format changes
+- Current branch validation: see
+  [`docs/repo_capabilities_status.md`](repo_capabilities_status.md)
 
 ## Conclusion
 
@@ -222,4 +249,6 @@ Event buffer pre-allocation was tested but reverted (0.51x regression - torch.ca
 
 Overall emulator performance: **97 FPS** on DAVIS346 (346x260) with photoreceptor noise enabled.
 
-**All 83 tests passing** in the validated `v2e` conda environment.
+The original optimization pass ended with 83 tests passing in the validated
+`v2e` conda environment. Current branch validation is tracked in
+[`docs/repo_capabilities_status.md`](repo_capabilities_status.md).

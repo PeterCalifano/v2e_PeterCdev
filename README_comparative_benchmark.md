@@ -19,12 +19,12 @@ optimized baseline and new error-model feature sets in this branch.
 ## Why This Stimulus
 
 The synthetic scenario is inspired by the IEBCS sensitivity protocol and V2CE
-burst-timestamp analysis goals.
+timestamp analysis goals. It is not a reference-equivalence fixture.
 
 - IEBCS reports square-wave stimulation at `10 Hz` and evaluates sensitivity
   versus contrast amplitude ramps up to `0.5 log_e` units.
-- V2CE highlights timestamp-layering artifacts from even/random timestamp
-  placement and motivates better temporal placement quality metrics.
+- V2CE highlights timestamp-layering artifacts and uses local dynamic-aware
+  timestamp inference. The current v2e profiles do not implement that inference.
 
 The implemented stimulus uses:
 
@@ -78,6 +78,15 @@ All IEBCS and V2CE flags enabled except histogram-noise.
 - `timestamp_layering_score` (unique timestamp ratio after microsecond
   quantization)
 - per-pixel normalized event-rate map
+
+Important current behavior:
+
+- Packets are concatenated and globally sorted before these metrics are
+  computed.
+- This makes the metric input convenient for distribution comparisons but hides
+  raw cross-packet ordering defects.
+- The benchmark must report raw monotonicity before sorting before it can be
+  used as a stream-validity gate.
 
 Current code definitions:
 
@@ -146,7 +155,7 @@ The benchmark generates:
 Main script:
 
 ```bash
-python v2ecore/benchmarks/benchmark_error_models_eventstream.py --help
+conda run -n v2e python v2ecore/benchmarks/benchmark_error_models_eventstream.py --help
 ```
 
 Key options:
@@ -163,7 +172,7 @@ Key options:
 ### 1) Quick smoke run (CPU)
 
 ```bash
-python v2ecore/benchmarks/benchmark_error_models_eventstream.py \
+conda run -n v2e python v2ecore/benchmarks/benchmark_error_models_eventstream.py \
   --device cpu \
   --width 128 --height 96 \
   --duration_s 0.3 --fps 40 \
@@ -173,7 +182,7 @@ python v2ecore/benchmarks/benchmark_error_models_eventstream.py \
 ### 2) Full comparative run (auto device)
 
 ```bash
-python v2ecore/benchmarks/benchmark_error_models_eventstream.py \
+conda run -n v2e python v2ecore/benchmarks/benchmark_error_models_eventstream.py \
   --device auto \
   --width 346 --height 260 \
   --duration_s 1.0 --fps 120 \
@@ -184,7 +193,7 @@ python v2ecore/benchmarks/benchmark_error_models_eventstream.py \
 ### 3) Plot-only regeneration from saved report
 
 ```bash
-python v2ecore/benchmarks/benchmark_error_models_eventstream.py \
+conda run -n v2e python v2ecore/benchmarks/benchmark_error_models_eventstream.py \
   --plot_only_from_json output/benchmarks_comparative/benchmark_error_models_eventstream_YYYYMMDD_HHMMSS_xxxxxx.json \
   --output_dir output/benchmarks_comparative/replots
 ```
@@ -210,9 +219,14 @@ Per run, the script writes:
 
 ## Limitations
 
-- The pseudo-reference is synthetic high-FPS output, not hardware GT.
-- Absolute metric values depend on stimulus and parameterization.
-- Cross-device runtime comparisons (CPU vs GPU) are not directly comparable.
+- [x] The pseudo-reference is synthetic high-FPS output, not hardware GT.
+- [x] Absolute metric values depend on stimulus and parameterization.
+- [x] Cross-device runtime comparisons are not directly comparable.
+- [ ] Fix the runner's repository-root resolution so imports and default output
+      always belong to this checkout.
+- [ ] Record raw cross-packet monotonicity before the current normalization sort.
+- [ ] Add reference-derived IEBCS/V2CE fixtures and declared tolerances.
+- [ ] Re-run published comparison artifacts after correctness consolidation.
 
 ## References
 

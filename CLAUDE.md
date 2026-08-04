@@ -23,6 +23,9 @@ python -m pip install -e .
 If you build the environment manually instead of using `environment.yml`, use
 Python 3.11 to match the checked-in dependency set.
 
+When running commands from an automation shell where the environment is not
+already activated, use `conda run -n v2e ...`.
+
 Download the pre-trained SuperSloMo model from Google Drive (SuperSloMo39.ckpt, 151 MB) and save to the `input/` folder.
 
 ## Common Commands
@@ -50,7 +53,7 @@ python v2e.py --dvs346  # Sets output to 346x260 (DAVIS346)
 python v2e.py --dvs240  # Sets output to 240x180 (DAVIS240)
 python v2e.py --dvs640  # Sets output to 640x480 (DAVIS640)
 
-# Trial run (use --stop option to limit processing time)
+# Trial run (use --stop_time to limit processing time)
 python v2e.py -i input/video.mov --stop_time=3
 
 # Headless mode (no OpenCV preview windows)
@@ -61,41 +64,41 @@ python v2e.py --no_preview
 
 ```bash
 # Run all tests
-python -m pytest -q
+conda run -n v2e python -m pytest -q
 
 # Run emulator regression tests only
-python -m pytest -q test/test_emulator_*.py
+conda run -n v2e python -m pytest -q test/test_emulator_*.py
 
 # Run error-model / eventstream benchmark smoke tests
-python -m pytest -q test/test_eventstream_benchmark.py
+conda run -n v2e python -m pytest -q test/test_eventstream_benchmark.py
 
 # Run specific test file
-python -m pytest -q test/test_io_regressions.py
+conda run -n v2e python -m pytest -q test/test_io_regressions.py
 
 # Run optimization correctness tests
-python -m pytest -q test/test_optimizations.py
+conda run -n v2e python -m pytest -q test/test_optimizations.py
 
 # Run micro-benchmarks (prints speedup ratios, use -s)
-python -m pytest -q test/test_perf_benchmarks.py -s
+conda run -n v2e python -m pytest -q test/test_perf_benchmarks.py -s
 
 # Run end-to-end throughput benchmarks
-python -m pytest -q test/test_end_to_end_perf.py -s
+conda run -n v2e python -m pytest -q test/test_end_to_end_perf.py -s
 ```
 
 ### Benchmarking and Profiling
 
 ```bash
 # Core emulator timing
-python v2ecore/benchmarks/benchmark_emulator.py
+conda run -n v2e python v2ecore/benchmarks/benchmark_emulator.py
 
 # Core emulator profiling with cProfile
-python v2ecore/benchmarks/benchmark_emulator.py --profile
+conda run -n v2e python v2ecore/benchmarks/benchmark_emulator.py --profile
 
 # Comparative error model benchmark (baseline / V2CE / IEBCS profiles)
-python v2ecore/benchmarks/benchmark_error_models_eventstream.py --output_dir output/benchmarks
+conda run -n v2e python v2ecore/benchmarks/benchmark_error_models_eventstream.py --output_dir output/benchmarks
 
 # 3D event visualization example
-python scripts/plot_events_3d_example.py --scenario moving_blob
+conda run -n v2e python scripts/plot_events_3d_example.py --scenario moving_blob
 ```
 
 ## Core Architecture
@@ -120,9 +123,8 @@ python scripts/plot_events_3d_example.py --scenario moving_blob
 ### Event Model Stages
 
 The DVS event model follows the stages documented in
-`docs/core_model_mapping.md`. That document uses stable anchor IDs and line
-references; this branch does not currently embed literal `#KEY[...]` comments
-in source.
+`docs/core_model_mapping.md`. That document uses stable literal `# KEY[...]`
+anchors rather than copied line-number indexes.
 
 1. **Lin-log encoding**: Piecewise linear/log brightness mapping (`#KEY[D-LINLOG]`)
 2. **Photoreceptor lowpass**: Intensity-dependent IIR filter (`#KEY[E-LPF-*]`)
@@ -137,7 +139,9 @@ to implementation locations.
 
 ## IEBCS and V2CE Error Model Extensions
 
-All extensions are **opt-in** and **disabled by default**. See `docs/README_error_models_extensions.md` for full details.
+All extensions are **opt-in**, **disabled by default**, and experimental. See
+`docs/README_error_models_extensions.md` for the current correctness and
+reference-equivalence limits.
 
 ### IEBCS Stage-1 Extensions
 
@@ -185,15 +189,23 @@ unless you add those preset files locally.
 
 ## Optimization Notes
 
-Applied optimizations (see `docs/OPTIMIZATION_SUMMARY.md` for full analysis):
+Historical optimization measurements are archived in
+`docs/OPTIMIZATION_SUMMARY.md`. Do not reuse their fixed speedup values as
+current results.
 
-- **`LowPassFilter` scalar ε path** (`emulator_utils.py`): uses in-place `lerp_()` — 2.3x speedup
-- **CPU-GPU transfers** (`emulator.py`): `.item()` instead of `.cpu().numpy().item()`, `.cpu().numpy()` instead of `.cpu().data.numpy()` — 1.3-1.5x speedup
+- **`LowPassFilter` scalar ε path** (`emulator_utils.py`): uses in-place
+  `lerp_()`, but currently lacks the tensor path's stability clamp
+- **CPU-GPU transfers** (`emulator.py`): use direct `.item()` and
+  `.cpu().numpy()` patterns
 - **`Map_linear_to_log_luminance`**: requires float64 internally for OFF-event numerical stability — see `TODO (TBC)` comment before attempting float32 conversion
-- **Event buffer pre-allocation**: tested but reverted — `torch.cat` is faster on CUDA (see comment at `signal_event_chunks` declaration in `emulator.py`)
-- **Parallel histogram** (`v2e_utils.py`): implemented but requires TBB ≥ 2021.6 (interface version 12060); auto-disabled below threshold
+- **Event buffer pre-allocation**: historical experiment was reverted; current
+  code accumulates chunks and concatenates once
+- **Parallel histogram** (`v2e_utils.py`): implemented above a one-million-track
+  threshold, but current tests do not activate that branch
 
-Advanced optimization opportunities (custom CUDA kernels, Cython, TorchScript): `docs/ADVANCED_OPTIMIZATION_OPPORTUNITIES.md`
+Active porting/performance roadmap (shared C++/CUDA backend, Python/Julia
+interfaces, and parity gates):
+`doc/developments/performance_optimization_opportunities.md`
 
 ## Development Notes
 
@@ -202,16 +214,20 @@ Advanced optimization opportunities (custom CUDA kernels, Cython, TorchScript): 
 When editing core event generation code, preserve:
 
 - Event format: `[timestamp, x, y, polarity]`
-- Monotonic timestamps within each event packet
+- Monotonic timestamps within packets and across the complete output stream
 - Polarity values in `{+1, -1}`
 - Threshold/reset logic: emitted events must advance/reduce `base_log_frame` consistently
 - Refractory logic: events closer than `refractory_period_s` filtered per pixel
 - Reproducibility with fixed seeds (`--dvs_emulator_seed`)
 
+Current correctness work is ordered in
+`doc/developments/consolidation_staged_plan.md`.
+
 ### Performance Hotspots
 
 - `v2ecore/emulator.py`: Iterative event generation loop and per-iteration event extraction
-- `v2ecore/emulator_utils.py`: `Map_linear_to_log_luminance` and `LowPassFilter` (scalar ε path uses in-place `lerp_` — 2.3x speedup over allocating form)
+- `v2ecore/emulator_utils.py`: `Map_linear_to_log_luminance` and
+  `LowPassFilter`
 - `v2e.py` + `v2ecore/slomo.py`: Frame I/O and batch buffering
 
 ### Optimization Strategy

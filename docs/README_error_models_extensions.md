@@ -1,547 +1,282 @@
-# v2e Error Model Extensions (IEBCS + V2CE-Inspired)
+# v2e Error-Model Extensions
 
-This document maps the new optional error-model extensions added to `v2e` while
-preserving default behavior.
+This document is the authoritative description of the opt-in IEBCS- and
+V2CE-inspired options on
+`feature/extend_error_models_IEBCS_V2CE`.
 
-## Scope
+These options are implemented inside the v2e pixel-model pipeline. They are not
+source-identical ports, and the current audit does **not** establish
+reference-output equivalence.
 
-Added extensions:
+## References and Scope
 
-- IEBCS-inspired event timestamp latency + jitter.
-- IEBCS-inspired threshold reset noise (re-sample thresholds after emitted
-  signal events).
-- V2CE-inspired non-uniform intra-frame timestamp placement for event bursts.
-- IEBCS Stage-2 inspired contrast-latency, histogram background noise, and
-  refractory-state coupling (all optional).
+- Joubert et al., *Event Camera Simulator Improvements via Characterized
+  Parameters*, Frontiers in Neuroscience, 2021:
+  <https://doi.org/10.3389/fnins.2021.702765>
+- Zhang et al., *V2CE: Video to Continuous Events Simulator*, ICRA 2024,
+  arXiv v2: <https://arxiv.org/abs/2309.08891>
 
-Primary references:
+The V2CE paper's current arXiv revision is v2 from 26 April 2024. Its pipeline
+has two major stages: learned event-voxel prediction and local dynamic-aware
+timestamp inference. The options in this repository replace neither stage.
 
-- Joubert et al. (2021), *Event Camera Simulator Improvements via Characterized
-  Parameters*, Frontiers in Neuroscience.
-- Zhang et al. (2024), *V2CE: Video to Continuous Events Simulator*, ICRA 2024
-  / arXiv:2309.08891.
+Terminology used below:
 
-Primary implementation files:
+- **Implemented**: the code path is callable and locally tested.
+- **Component-aligned**: it implements a mechanism from the same effect class.
+- **Output-equivalent**: event distributions and state evolution match the
+  reference under controlled inputs. No IEBCS/V2CE extension currently meets
+  this stronger standard.
 
-- `v2ecore/v2e_args.py`
-- `v2e.py`
-- `v2ecore/emulator.py`
+## Compatibility Boundary
 
-Primary tests:
-
-- `test/test_emulator_regression.py`
-- `test/test_io_regressions.py`
-
-Comparative benchmark and visualization:
-
-- `README_comparative_benchmark.md`
-- Runner:
-  `python v2ecore/benchmarks/benchmark_error_models_eventstream.py`
-
-## Compatibility Guarantee
-
-All new features are opt-in and disabled by default. With default flags,
-`v2e` behavior and I/O format remain unchanged.
-
-- Event schema is unchanged: `[t, x, y, p]`.
-- Existing CLI options remain valid.
-- Default timestamp generation remains linear subdivision.
-
-## Behavioral Equivalence Scope
-
-The right standard for these options is behavioral equivalence of the modeled
-effect, not source-code identity with the upstream simulator.
-
-- IEBCS-derived options in this repo aim to reproduce the same first-order
-  output effect as the corresponding IEBCS mechanisms:
-  delayed / jittered timestamps, reset-threshold variability, histogram-driven
-  background noise, and refractory release interpolation.
-- V2CE-derived options in this repo do **not** aim to reproduce the full V2CE
-  simulator output. They target one narrower effect from V2CE: reducing
-  timestamp layering inside same-frame event bursts.
-
-As a result:
-
-- IEBCS-derived features are best described as behaviorally aligned mechanisms
-  implemented inside the `v2e` architecture.
-- The V2CE-derived feature is best described as a behaviorally aligned
-  timestamp-placement heuristic, not a full V2CE-equivalent event generator.
+- [x] Every extension is opt-in and disabled by default.
+- [x] The public event schema remains `[t, x, y, p]`.
+- [x] Existing V2CE flag names remain unchanged.
+- [x] Finite string options are represented internally by enums while retaining
+      their public CLI strings.
+- [ ] Exact default-path equivalence still needs a committed golden-stream
+      fixture across all writers.
 
 ## CLI Surface
 
-Defined in `v2ecore/v2e_args.py`:
-
-- `--iebcs_latency_jitter_model` (default `false`)
-- `--iebcs_latency_mean_us` (default `100.0`)
-- `--iebcs_latency_jitter_us` (default `30.0`)
-- `--iebcs_resample_thresholds_on_event` (default `false`)
-- `--iebcs_contrast_latency_model` (default `false`)
-- `--iebcs_latency_tau_us` (default `300.0`)
-- `--iebcs_latency_clamp_us` (default `10000.0`)
-- `--iebcs_latency_slope_jitter` (default `true`)
-- `--iebcs_hist_noise_model` (default `false`)
-- `--iebcs_noise_source` (default `"preset"`, choices: `preset|files`)
-- `--iebcs_noise_preset` (default `"161lux"`, choices: `3klux|161lux|0.1lux`)
-- `--iebcs_noise_pos_path` (default `None`)
-- `--iebcs_noise_neg_path` (default `None`)
-- `--iebcs_refractory_state_coupling` (default `false`)
-- `--iebcs_refractory_us` (default `None`, then falls back to `--refractory_period`)
-- `--v2ce_nonuniform_burst_timestamps` (default `false`)
-- `--v2ce_burst_timestamps_mode` (default `"random"`, choices: `random|slope`)
-
-Validated and forwarded in `v2e.py`, then consumed by `EventEmulator`.
-
-## Extension Map
-
-### 1. IEBCS Latency + Jitter
-
-Intent:
-
-- Simulate event timestamp delay and temporal uncertainty after event formation.
-
-Flag(s):
-
-- Enable with `--iebcs_latency_jitter_model=true`.
-- Parameters:
-  `--iebcs_latency_mean_us`, `--iebcs_latency_jitter_us`.
-
-Implementation:
-
-- Constructor fields in `EventEmulator.__init__`.
-- Applied in `_apply_latency_jitter_and_sort`.
-- Called just before conversion/output in `generate_events`.
-
-Behavior:
-
-- Per-event offset sampled from `Normal(mean_s, jitter_s)`.
-- Offsets are clamped to non-negative values.
-- Offsets are added to event timestamps.
-- Events are sorted by timestamp afterwards to preserve monotonicity.
-- `signnoise_label` is reordered with the same permutation.
-
-Current code-level summary:
-
-```text
-delta_i ~ Normal(mean_s, jitter_s)
-t_i,new = t_i + max(delta_i, 0)
-```
-
-Behavioral-equivalence assessment:
-
-- Strong for the intended effect.
-- The output effect matches the IEBCS mechanism class: event times are delayed
-  and jittered after crossing formation.
-- Exact parameterization is not identical to upstream IEBCS in every detail, so
-  this should not be described as reference-identical output.
-
-### 2. IEBCS Threshold Reset Noise
-
-Intent:
-
-- Emulate comparator/reset variability by re-sampling thresholds for pixels that
-  actually emitted signal events.
-
-Flag(s):
-
-- Enable with `--iebcs_resample_thresholds_on_event=true`.
-
-Implementation:
-
-- Logic in `_resample_thresholds_after_signal_events`.
-- Called in `generate_events` after final signal event masks are known.
-
-Behavior:
-
-- Uses `final_pos_evts_frame > 0` and `final_neg_evts_frame > 0` masks.
-- Re-samples ON/OFF thresholds from
-  `Normal(pos_thres_nominal, sigma_thres)` and
-  `Normal(neg_thres_nominal, sigma_thres)`.
-- Clamps re-sampled thresholds to stability lower bound `0.01`.
-- Refreshes shot-noise scaling via `_refresh_threshold_probability_scales`.
-
-Current code-level summary:
-
-```text
-theta_on,new  ~ Normal(theta_on_nominal,  sigma_theta)
-theta_off,new ~ Normal(theta_off_nominal, sigma_theta)
-theta_* = max(theta_*, 0.01)
-```
-
-Notes:
-
-- No-op if `sigma_thres <= 0`.
-- No-op if threshold tensors are not initialized as per-pixel tensors.
-- Applied to signal-event pixels (not shot-noise-only pixels).
-
-Behavioral-equivalence assessment:
-
-- Strong for the intended effect.
-- This reproduces the same comparator-reset noise behavior class as IEBCS:
-  thresholds are re-sampled for pixels that emitted signal events.
-
-### 3. V2CE Non-Uniform Burst Timestamps
-
-Intent:
-
-- Replace linear intra-frame timestamp spacing for burst iterations with
-  non-uniform placement.
-
-Flag(s):
-
-- Enable with `--v2ce_nonuniform_burst_timestamps=true`.
-- Mode via `--v2ce_burst_timestamps_mode=random|slope`.
-
-Implementation:
-
-- Centralized in `_sample_signal_timestamps`.
-- Used where `ts`/`ts_step` are generated in `generate_events`.
-
-Behavior:
-
-- Default path (`false`): same linear `torch.linspace` timestamps as legacy
-  behavior.
-- `random` mode: sorted uniform random fractions over the frame interval.
-- `slope` mode: sorted `sqrt(U)` fractions, biasing timestamps later in the
-  frame.
-- `ts_step` remains nominal `delta_time / min_ts_steps` and is still used for
-  refractory gating decisions.
-
-Current code-level summary:
-
-```text
-Delta t = t_frame - t_prev
-
-linear:  t_i = t_prev + i * Delta t / N,      i = 1, ..., N
-random:  t_i = t_prev + Delta t * sort(U_i)
-slope:   t_i = t_prev + Delta t * sort(sqrt(U_i))
-
-U_i ~ Uniform(0, 1)
-```
-
-Notes:
-
-- Effect is visible when `min_ts_steps > 1` (multi-event bursts in a frame).
-- Output remains monotonic.
-- This is a V2CE-inspired timestamp-placement heuristic, not the full learned
-  V2CE simulator from Zhang et al. (2024).
-
-Behavioral-equivalence assessment:
-
-- Partial only.
-- It reproduces the same narrow output effect that motivated the V2CE timestamp
-  stage, namely reducing artificial temporal layering from uniform burst
-  placement.
-- It does **not** reproduce the full V2CE behavior, because it does not infer
-  timestamps from learned event voxels or local dynamic-aware slope estimates in
-  the same way as the official V2CE pipeline.
-
-### 4. IEBCS Stage-2: Contrast Latency
-
-Intent:
-
-- Use signal-dependent latency per emitted signal event, instead of only a
-  fixed packet-level timestamp shift.
-
-Flags:
-
-- `--iebcs_contrast_latency_model=true`
-- Optional tuning:
-  `--iebcs_latency_tau_us`,
-  `--iebcs_latency_clamp_us`,
-  `--iebcs_latency_slope_jitter`
-
-Behavior:
-
-- For each signal event, latency is sampled from an amplitude/slope-dependent
-  model and added to its per-iteration base timestamp.
-- Existing `--iebcs_latency_jitter_model` remains available as an additional
-  post-packet perturbation model for backward compatibility.
-
-Current code-level summary:
-
-```text
-drive = |L_photo + eta_photo - L_mem|
-amp = clamp(theta / drive, eps, 1 - eps)
-lat = mu_lat - tau_lat * log(1 - amp) + xi
-lat = clamp(lat, 0, lat_clamp)
-t_i,new = t_i + lat
-```
-
-with `xi` sampled from a zero-mean Gaussian whose standard deviation is either
-constant or slope-scaled, depending on `--iebcs_latency_slope_jitter`.
-
-Behavioral-equivalence assessment:
-
-- Strong for the intended effect.
-- The mean latency term follows the same first-order structure as IEBCS
-  front-end interpolation / contrast-latency modeling.
-- Jitter scaling is not upstream-identical, so the correct claim is behavioral
-  alignment rather than exact output equivalence.
-
-### 5. IEBCS Stage-2: Histogram Background Noise
-
-Intent:
-
-- Replace simplified shot-noise probability sampling with scheduled ON/OFF
-  background noise events sampled from measured histogram distributions.
-
-Flags:
-
-- Enable: `--iebcs_hist_noise_model=true`
-- Source selection:
-  - Presets: `--iebcs_noise_source preset --iebcs_noise_preset 161lux`
-  - Files: `--iebcs_noise_source files --iebcs_noise_pos_path ... --iebcs_noise_neg_path ...`
-
-Behavior:
-
-- One ON and one OFF noise CDF are assigned per pixel.
-- Each pixel keeps next ON/OFF noise timestamps; events due in `(t_prev, t_frame]`
-  are emitted and rescheduled.
-- Event ordering and optional signal/noise labels are preserved.
-
-Notes:
-
-- This repository snapshot does not include preset histogram `.npy` files under
-  `input/iebcs_noise/`. Preset mode therefore requires users to add those files
-  themselves; explicit `files` mode works immediately.
-
-Behavioral-equivalence assessment:
-
-- Strong if the same histogram assets are used.
-- The implementation uses the same output-level mechanism class as IEBCS:
-  assign ON/OFF histogram CDF rows per pixel, schedule next noise timestamps,
-  emit due events, then reschedule.
-- A local safety cap is added to avoid pathological per-frame explosions, so in
-  extreme cases output can diverge intentionally from upstream behavior.
-
-### 6. IEBCS Stage-2: Refractory State Coupling
-
-Intent:
-
-- Couple refractory handling with state release timestamps and interpolate
-  memory state on refractory release.
-
-Flags:
-
-- `--iebcs_refractory_state_coupling=true`
-- `--iebcs_refractory_us` (optional override of `--refractory_period`)
-
-Behavior:
-
-- Per-pixel refractory-release timestamps gate candidate events.
-- Pixels leaving refractory inside a frame interval update memory state using
-  release-time interpolation before further event checks.
-
-Behavioral-equivalence assessment:
-
-- Strong for the intended effect.
-- This captures the same modeled behavior as IEBCS refractory-state coupling:
-  release-time interpolation followed by renewed threshold checking inside the
-  same frame interval.
-
-## Data-Flow Integration
-
-1. Parse flags in `v2ecore/v2e_args.py`.
-2. Validate numeric ranges and forward options in `v2e.py`.
-3. Store options in `EventEmulator`.
-4. During `generate_events`:
-   - (optional) non-uniform per-iteration `ts` generation.
-   - regular event map + emission pipeline.
-   - (optional) threshold re-sampling after final signal masks.
-   - (optional) latency+jitter and stable sort before output.
-
-## Implementation Details
-
-### Constructor and State (`v2ecore/emulator.py`)
-
-New constructor parameters are stored as internal state in `EventEmulator.__init__`:
-
-- `iebcs_latency_jitter_model` -> `self.iebcs_latency_jitter_model`
-- `iebcs_latency_mean_us` -> `self.iebcs_latency_mean_s = mean_us * 1e-6`
-- `iebcs_latency_jitter_us` -> `self.iebcs_latency_jitter_s = jitter_us * 1e-6`
-- `iebcs_resample_thresholds_on_event` -> `self.iebcs_resample_thresholds_on_event`
-- `v2ce_nonuniform_burst_timestamps` -> `self.v2ce_nonuniform_burst_timestamps`
-- `v2ce_burst_timestamps_mode` -> `self.v2ce_burst_timestamps_mode`
-
-`v2ce_burst_timestamps_mode` is validated in the emulator (`random|slope`), and
-`v2e.py` validates non-negative latency parameters before construction.
-
-### Timestamp Generation Path (`_sample_signal_timestamps`)
-
-Signal-event iteration timestamps are generated once per frame transition.
-
-- Inputs: `min_ts_steps`, `delta_time`, `t_frame`.
-- Returns: `(ts, ts_step)`.
-- `ts_step = delta_time / min_ts_steps` is preserved as nominal spacing for
-  refractory checks, even when non-uniform timestamp placement is enabled.
-
-Cases:
-
-1. `min_ts_steps == 1`:
-   - `ts = [t_frame]`.
-2. Default mode (`v2ce_nonuniform_burst_timestamps=false`):
-   - `ts = linspace(t_prev + ts_step, t_frame, min_ts_steps)`.
-3. Non-uniform mode:
-   - Sample `raw ~ Uniform(0, 1)` of size `min_ts_steps`.
-   - If mode is `slope`, map with `raw = sqrt(raw)` (end-biased).
-   - Sort fractions and map to interval:
-     `ts = t_prev + delta_time * sort(raw)`.
-   - Clamp to `(t_prev, t_frame]` for numerical safety.
-
-### Threshold Reset Noise (`_resample_thresholds_after_signal_events`)
-
-Executed only after final signal event masks are known.
-
-Guard conditions:
-
-- Feature disabled -> immediate return.
-- `sigma_thres <= 0` -> immediate return.
-- Threshold fields not per-pixel tensors -> immediate return.
-
-For ON/OFF masks independently:
-
-- Mask definition:
-  - ON: `final_pos_evts_frame > 0`
-  - OFF: `final_neg_evts_frame > 0`
-- Resample only masked pixels:
-  - ON: `Normal(pos_thres_nominal, sigma_thres)`
-  - OFF: `Normal(neg_thres_nominal, sigma_thres)`
-- Clamp sampled thresholds to `>= 0.01`.
-- Recompute shot-noise pre-probability scales only if at least one threshold
-  set changed, via `_refresh_threshold_probability_scales()`.
-
-This keeps work proportional to active pixels and avoids full-frame resampling.
-
-### Latency/Jitter Application (`_apply_latency_jitter_and_sort`)
-
-Applied at the end of frame processing, after all signal/noise events are
-assembled.
-
-Algorithm:
-
-- If disabled or no events: no-op.
-- Sample per-event offset:
-  `offset_i ~ Normal(self.iebcs_latency_mean_s, self.iebcs_latency_jitter_s)`.
-- Clamp each offset to `>= 0`.
-- Add offset to event timestamps in-place.
-- Stable output ordering is restored by sorting `events[:, 0]`.
-- If present, `signnoise_label` is permuted with identical indices.
-
-This keeps external packet format unchanged while preserving monotonic output.
-
-### Integration Point in `generate_events`
-
-Call order inside `EventEmulator.generate_events`:
-
-1. Compute event counts (`compute_event_map`).
-2. Build per-iteration signal events using `ts` from `_sample_signal_timestamps`.
-3. Optionally append shot-noise events (legacy path).
-4. Update base memory (`self.base_log_frame`).
-5. Optionally resample thresholds for signal-emitting pixels.
-6. Optionally apply latency+jitter and sort events.
-7. Convert to numpy and write to selected outputs.
-
-This ordering intentionally keeps base v2e internals and outputs unchanged when
-all new flags are disabled.
-
-### Complexity Notes
-
-- Signal event assembly avoids repeated `torch.cat` inside the iteration loop:
-  per-iteration chunks are collected then concatenated once.
-- Threshold reset noise samples only masked pixel subsets (`num_pos`, `num_neg`)
-  instead of full-frame random draws.
-- Latency model adds one normal sample and one sort per event packet.
-
-### Validation and Error Handling
-
-In `v2e.py`:
-
-- `shot_noise_rate_hz < 0` -> error + exit.
-- `iebcs_latency_mean_us < 0` -> error + exit.
-- `iebcs_latency_jitter_us < 0` -> error + exit.
-- `iebcs_latency_tau_us < 0` -> error + exit.
-- `iebcs_latency_clamp_us < 0` -> error + exit.
-- `iebcs_refractory_us < 0` -> error + exit.
-- `--iebcs_hist_noise_model` with `--iebcs_noise_source=files` requires both
-  ON/OFF file paths.
-- `--iebcs_hist_noise_model` with missing resolved ON/OFF files (including
-  missing preset files) -> actionable error + exit before emulator construction.
-
-In `EventEmulator.__init__`:
-
-- Invalid `v2ce_burst_timestamps_mode` raises `ValueError`.
-- Histogram-noise ON/OFF file existence is validated before loading.
-
-In histogram-noise event scheduling:
-
-- Per-frame histogram-noise output is capped at
-  `8 * num_pixels` events (internal guardrail) to avoid runaway loops.
-- Excess due events are rescheduled strictly after frame time and a warning is logged.
-
-These checks ensure bad parameterizations fail early.
-
-## Tests Mapping
-
-Feature tests in `test/test_emulator_regression.py`:
-
-- `test_iebcs_latency_jitter_model_delays_timestamps_and_keeps_monotonic`
-- `test_iebcs_resample_thresholds_on_event_updates_thresholds_only_when_enabled`
-- `test_v2ce_disabled_matches_default_linear_path`
-- `test_v2ce_random_burst_timestamps_are_nonuniform_and_monotonic`
-- `test_v2ce_slope_mode_biases_events_later_than_random_mode`
-- `test_invalid_v2ce_burst_timestamps_mode_raises_value_error`
-- `test_refractory_release_interpolation_is_idempotent_within_frame`
-- `test_hist_noise_event_generation_is_capped_and_reschedules_dropped_due_events`
-
-CLI wiring test in `test/test_io_regressions.py`:
-
-- `test_main_passes_iebcs_and_v2ce_flags_to_emulator`
-- `test_cli_rejects_invalid_hist_noise_configuration`
-- `test_cli_rejects_missing_preset_hist_noise_files`
-- `test_cli_rejects_negative_latency_tau_or_refractory_values`
-
-## Quick Usage Examples
-
-IEBCS latency+jitter only:
-
-```bash
-python v2e.py ... \
-  --iebcs_latency_jitter_model true \
-  --iebcs_latency_mean_us 120 \
-  --iebcs_latency_jitter_us 25
-```
-
-IEBCS threshold reset noise only:
-
-```bash
-python v2e.py ... \
-  --iebcs_resample_thresholds_on_event true
-```
-
-V2CE-style burst timestamps:
-
-```bash
-python v2e.py ... \
-  --v2ce_nonuniform_burst_timestamps true \
-  --v2ce_burst_timestamps_mode slope
-```
-
-IEBCS Stage-2 contrast latency + refractory coupling:
-
-```bash
-python v2e.py ... \
-  --iebcs_contrast_latency_model true \
-  --iebcs_latency_tau_us 300 \
-  --iebcs_refractory_state_coupling true \
-  --iebcs_refractory_us 700
-```
-
-IEBCS Stage-2 histogram noise from explicit files:
-
-```bash
-python v2e.py ... \
-  --iebcs_hist_noise_model true \
-  --iebcs_noise_source files \
-  --iebcs_noise_pos_path /path/to/noise_pos.npy \
-  --iebcs_noise_neg_path /path/to/noise_neg.npy
-```
+| Mechanism | Flags | Current audit status |
+|---|---|---|
+| Simple latency/jitter | `--iebcs_latency_jitter_model`, `--iebcs_latency_mean_us`, `--iebcs_latency_jitter_us` | Implemented; packet-local ordering only |
+| Threshold reset | `--iebcs_resample_thresholds_on_event` | Implemented after each frame packet, not after each event |
+| Contrast latency | `--iebcs_contrast_latency_model`, `--iebcs_latency_tau_us`, `--iebcs_latency_clamp_us`, `--iebcs_latency_slope_jitter` | Component-aligned logarithmic latency shape |
+| Histogram noise | `--iebcs_hist_noise_model`, `--iebcs_noise_source`, `--iebcs_noise_preset`, explicit path flags | Implemented with external files; state lifecycle incomplete |
+| Refractory coupling | `--iebcs_refractory_state_coupling`, `--iebcs_refractory_us` | Implemented but behaviorally incomplete |
+| Non-uniform V2CE timing | `--v2ce_nonuniform_burst_timestamps`, `--v2ce_burst_timestamps_mode {random,slope}` | Frame-global layer-relocation heuristic |
+
+## IEBCS-Inspired Mechanisms
+
+### Simple latency and jitter
+
+For event \(i\), the post-generation model samples
+
+$$
+\delta_i \sim \mathcal N(\mu_{\mathrm{lat}},\sigma_{\mathrm{lat}}),
+\qquad
+t_i' = t_i+\max(\delta_i,0).
+$$
+
+The current frame packet is then sorted by \(t_i'\), and an optional
+signal/noise label receives the same permutation.
+
+Current limitations:
+
+- Sorting is only within one `generate_events` result.
+- A delayed event from packet \(k\) can be later than an event already emitted
+  from packet \(k+1\), so the complete stream can be non-monotonic.
+- The simple offset is applied after event formation; IEBCS uses latency in the
+  signal-crossing and refractory lifecycle.
+- The model therefore produces delayed/jittered timestamps but is not
+  IEBCS-output-equivalent.
+
+### Threshold reset
+
+For a pixel that emitted at least one signal event in the current frame packet,
+the corresponding threshold is resampled once:
+
+$$
+\theta_+' \sim \mathcal N(\bar\theta_+,\sigma_\theta),
+\qquad
+\theta_-' \sim \mathcal N(\bar\theta_-,\sigma_\theta),
+$$
+
+followed by a lower clamp at \(0.01\).
+
+Current limitations:
+
+- v2e computes all event counts for the frame first and resamples after the
+  packet. IEBCS resamples after each event and can immediately produce further
+  crossings.
+- This gives cross-frame threshold variability, not IEBCS's iterative
+  same-frame reset dynamics.
+- `set_dvs_params()` changes the active preset thresholds but not the stored
+  nominal thresholds used by this resampling and shot-noise scaling.
+
+### Contrast-dependent latency
+
+For an emitted event, the implementation computes
+
+$$
+d=\left|L_{\mathrm{photo}}+\eta_{\mathrm{photo}}-L_{\mathrm{mem}}\right|,
+\qquad
+a=\operatorname{clamp}\left(\frac{\theta}{d},\epsilon,1-\epsilon\right),
+$$
+
+$$
+\ell
+=
+\operatorname{clamp}
+\left(
+\mu_{\mathrm{lat}}
+-\tau_{\mathrm{lat}}\log(1-a)
++\xi,\,
+0,\,
+\ell_{\max}
+\right),
+\qquad
+t'=t+\ell.
+$$
+
+This is component-aligned with IEBCS's logarithmic contrast/latency shape.
+It differs in intensity-dependent time-constant handling, jitter
+parameterization, state lifecycle, and packet ownership. It also inherits the
+cross-packet ordering defect.
+
+### Histogram-driven background noise
+
+Each pixel selects an ON and OFF CDF row. A uniform sample \(u\) selects a
+frequency bin
+
+$$
+f=F_{\mathrm{row}}^{-1}(u),
+\qquad
+\Delta t_{\mathrm{noise}}=\frac{1}{\max(f,10^{-6})}.
+$$
+
+The initial schedule currently uses a random phase
+
+$$
+t_{\mathrm{next}}=\phi\,\Delta t_{\mathrm{noise}},
+\qquad
+\phi\sim\mathcal U(0,1),
+$$
+
+and subsequent due events add another sampled delay.
+
+Current limitations:
+
+- The initial timestamp is relative to absolute zero, not the first input-frame
+  timestamp. Streams beginning at nonzero time can emit stale events.
+- Histogram events bypass signal refractory state and do not update the
+  comparator memory/reset state used by later signal events.
+- The safety cap processes ON candidates before OFF candidates, causing ON bias
+  when saturated; partial selection is also row-major.
+- IEBCS updates pixel voltage state when noise events occur.
+- v2e can emit multiple due events per polarity during one frame update, whereas
+  the reference update lifecycle differs.
+
+The CLI defines presets `3klux`, `161lux`, and `0.1lux`, but this repository
+does not contain the six expected `input/iebcs_noise/*.npy` files. Explicit
+`files` mode is usable when valid CDF arrays are supplied.
+
+### Refractory-state coupling
+
+For a pixel whose release time lies in the current interval, v2e linearly
+interpolates memory:
+
+$$
+\alpha
+=
+\operatorname{clamp}
+\left(
+\frac{t_{\mathrm{release}}-t_{k-1}}{\Delta t_k},
+0,
+1
+\right),
+$$
+
+$$
+L_{\mathrm{mem}}'
+=
+L_{\mathrm{mem}}
++\alpha
+\left(
+L_{\mathrm{photo}}+\eta_{\mathrm{photo}}-L_{\mathrm{mem}}
+\right).
+$$
+
+The event maps were already quantized before this interpolation. The current
+code does not recompute crossings after the state change. IEBCS instead evolves
+the release state exponentially and performs renewed threshold checks.
+
+A zero-duration coupled refractory option is therefore not currently an inert
+configuration. This mechanism must be classified as behaviorally incomplete.
+
+## V2CE-Inspired Timestamp Modes
+
+Assume a frame interval \((t_{k-1},t_k]\) contains \(N\) global event layers.
+The legacy v2e path uses
+
+$$
+t_i=t_{k-1}+i\frac{t_k-t_{k-1}}{N},
+\qquad i=1,\ldots,N.
+$$
+
+The optional modes draw one vector shared by every active pixel:
+
+$$
+u_i\sim\mathcal U(0,1),
+$$
+
+$$
+t_i^{\mathrm{random}}
+=
+t_{k-1}
++(t_k-t_{k-1})\operatorname{sort}(u_i),
+$$
+
+$$
+t_i^{\mathrm{slope}}
+=
+t_{k-1}
++(t_k-t_{k-1})\operatorname{sort}(\sqrt{u_i}).
+$$
+
+Both modes preserve event count, polarity, coordinates, and the number of
+global timestamp layers. They irregularly relocate those layers; they do not
+remove them.
+
+Differences from V2CE:
+
+- No learned event-voxel prediction.
+- No per-voxel, per-pixel, per-polarity timestamp sampling.
+- No slope inferred from neighboring temporal bins.
+- No local dynamic-aware timestamp inference.
+- The fixed `sqrt(U)` transform is an end-biased proxy, not the V2CE slope
+  density.
+- Legacy refractory gating decides whether to filter using nominal linear
+  spacing. Randomly adjacent layers can consequently violate the configured
+  refractory interval.
+
+The current modes are useful experimental v2e timing heuristics, but neither is
+V2CE output-equivalent or a demonstrated de-layering implementation.
+
+## Interaction and Stream Contracts
+
+- [x] Per-instance random generators isolate emulator streams from ambient
+      Python, NumPy, and PyTorch RNG state.
+- [x] Packet-local label permutations follow latency sorting.
+- [x] HDF5 buffering tracks logical and physically written event counts
+      separately.
+- [ ] Enforce global timestamp monotonicity across packets and writers.
+- [ ] Apply actual-timestamp refractory checks to non-uniform V2CE layers.
+- [ ] Integrate histogram events with refractory and comparator-memory state.
+- [ ] Define safe `reset()` behavior while HDF5 output is active.
+- [ ] Preserve HDR precision through the complete `v2e.py` no-SloMo path.
+
+## Validation Standard
+
+Current unit tests validate local mechanics and CLI wiring. They do not validate
+reference equivalence. A parity claim requires:
+
+- [ ] Derived deterministic fixtures from the local IEBCS and V2CE reference
+      repositories.
+- [ ] Event-count, polarity, coordinate, timestamp-distribution, and state
+      comparisons at a shared input/time convention.
+- [ ] Cross-packet ordering and writer round-trip checks.
+- [ ] Interaction tests for latency, refractory, histogram noise, and V2CE
+      timing.
+- [ ] Explicit tolerances and a documented list of intentionally different
+      behavior.
+
+See:
+
+- [`repo_capabilities_status.md`](repo_capabilities_status.md)
+- [`implementation_review_report.md`](implementation_review_report.md)
+- [`../doc/developments/consolidation_staged_plan.md`](../doc/developments/consolidation_staged_plan.md)
+- [`../doc/developments/v2ce_timing_staged_plan.md`](../doc/developments/v2ce_timing_staged_plan.md)

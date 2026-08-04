@@ -16,7 +16,9 @@ see [`docs/core_model_mapping.md`](core_model_mapping.md).
 - `v2ecore/renderer.py`: event-to-video frame accumulation.
 - `v2ecore/output/*`: event serialization backends.
 - `test/`: regression tests.
-- `scripts/benchmark_*.py`: profiling/benchmark helpers.
+- `v2ecore/benchmarks/`: repo-native profiling and comparative benchmark
+  helpers.
+- `doc/developments/`: staged plans and open development checklists.
 
 ## End-to-end pipeline
 
@@ -31,13 +33,16 @@ see [`docs/core_model_mapping.md`](core_model_mapping.md).
 When editing core code, preserve:
 
 - Event format: `[timestamp, x, y, polarity]`.
-- Monotonic timestamps within each emitted event packet.
+- Monotonic timestamps within each packet and across the complete output stream.
 - Polarity values in `{+1, -1}`.
 - Threshold/reset logic:
   emitted ON/OFF events must advance/reduce `base_log_frame` consistently.
 - Refractory logic:
   events closer than `refractory_period_s` should be filtered per pixel.
 - Reproducibility when a non-zero seed is provided.
+
+Known violations and their staged tests are tracked in
+[`consolidation_staged_plan.md`](../doc/developments/consolidation_staged_plan.md).
 
 ## Known hotspots
 
@@ -48,26 +53,31 @@ When editing core code, preserve:
 - `v2e.py` + `v2ecore/slomo.py`:
   intermediate frame I/O and batch buffering.
 
-## Safe optimization strategy (Python-only)
+## Safe optimization strategy
 
 Preferred order:
 
-1. Reduce Python/container overhead
-   (avoid repeated `np.append`/`torch.cat` in loops).
-2. Reduce unnecessary CPU/GPU sync points.
-3. Keep numeric behavior unchanged unless guarded behind explicit options.
+1. Establish a failing correctness/parity test before changing a model path.
+2. Reduce Python/container overhead and unnecessary CPU/GPU sync points.
+3. Keep numeric behavior unchanged unless a separately reviewed model correction
+   requires it.
 4. Add benchmarks and regression tests in the same change.
+
+For accelerator work, use
+[`doc/developments/performance_optimization_opportunities.md`](../doc/developments/performance_optimization_opportunities.md).
+The current direction is a shared C++/CUDA backend callable from Python and
+Julia, with Python/PyTorch as the reference fallback.
 
 ## Benchmarking workflow
 
 - Core emulator timing:
-  `python v2ecore/benchmarks/benchmark_emulator.py`
+  `conda run -n v2e python v2ecore/benchmarks/benchmark_emulator.py`
 - Core emulator profiling:
-  `python v2ecore/benchmarks/benchmark_emulator.py --profile`
+  `conda run -n v2e python v2ecore/benchmarks/benchmark_emulator.py --profile`
 - Comparative IEBCS / V2CE benchmark:
-  `python v2ecore/benchmarks/benchmark_error_models_eventstream.py`
+  `conda run -n v2e python v2ecore/benchmarks/benchmark_error_models_eventstream.py`
 - Dummy-motion 3D event visualization:
-  `python scripts/plot_events_3d_example.py --scenario moving_blob --save output/events_3d_blob.png --no_show`
+  `conda run -n v2e python scripts/plot_events_3d_example.py --scenario moving_blob --save output/events_3d_blob.png --no_show`
 
 Record benchmark parameters when sharing results:
 
@@ -80,16 +90,18 @@ Record benchmark parameters when sharing results:
 ## Testing workflow
 
 - Run all tests:
-  `python -m pytest -q`
+  `conda run -n v2e python -m pytest -q`
 - Run emulator regressions only:
-  `python -m pytest -q test/test_emulator_*.py`
+  `conda run -n v2e python -m pytest -q test/test_emulator_*.py`
 
 Recommended regression checks for core changes:
 
 - event shape and coordinate bounds
-- timestamp monotonicity
+- packet and global-stream timestamp monotonicity
 - deterministic output with fixed seeds
 - signal/noise labeling path (if enabled)
+- writer round-trip and finalization behavior
+- interaction checks for every pair of enabled timing/noise mechanisms
 
 ## Notes for `frames2events_quick.sh`
 
