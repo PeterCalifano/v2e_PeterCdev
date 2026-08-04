@@ -205,7 +205,7 @@ current results.
 
 Active porting/performance roadmap (shared C++/CUDA backend, Python/Julia
 interfaces, and parity gates):
-`doc/developments/performance_optimization_opportunities.md`
+`docs/developments/performance_optimization_opportunities.md`
 
 ## Development Notes
 
@@ -221,7 +221,7 @@ When editing core event generation code, preserve:
 - Reproducibility with fixed seeds (`--dvs_emulator_seed`)
 
 Current correctness work is ordered in
-`doc/developments/consolidation_staged_plan.md`.
+`docs/developments/consolidation_staged_plan.md`.
 
 ### Performance Hotspots
 

@@ -161,7 +161,7 @@ event statistics or local dynamics.
 
 Plan:
 Keep docs explicit. Implement
-[`doc/developments/v2ce_timing_staged_plan.md`](../../doc/developments/v2ce_timing_staged_plan.md)
+[`doc/developments/v2ce_timing_staged_plan.md`](../developments/v2ce_timing_staged_plan.md)
 Stage 2 before claiming stronger equivalence.
 
 ### Medium: IEBCS Histogram Presets Are Exposed But Assets Are Missing
@@ -367,7 +367,7 @@ Design risks:
 ## Commit Split Recommendation
 
 The superseding merge sequence is in
-[`doc/developments/consolidation_staged_plan.md`](../../doc/developments/consolidation_staged_plan.md).
+[`doc/developments/consolidation_staged_plan.md`](../developments/consolidation_staged_plan.md).
 
 Recommended split:
 

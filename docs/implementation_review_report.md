@@ -319,15 +319,15 @@ IEBCS and V2CE-Toolbox are reference repositories, not dependencies.
 - [x] Merge anchor navigation into `core_model_mapping.md`; remove the duplicate
       line-number index.
 - [x] Archive dated July reports under `docs/reports/`.
-- [x] Move active plans to `doc/developments/`.
+- [x] Move active plans to `docs/developments/`.
 - [ ] Re-run the link checker after every move.
 
 ## Recommended Direction
 
 Correctness consolidation must precede V2CE Stage 2 and accelerated backend
 work. Follow
-[`consolidation_staged_plan.md`](../doc/developments/consolidation_staged_plan.md),
+[`consolidation_staged_plan.md`](developments/consolidation_staged_plan.md),
 then
-[`v2ce_timing_staged_plan.md`](../doc/developments/v2ce_timing_staged_plan.md),
+[`v2ce_timing_staged_plan.md`](developments/v2ce_timing_staged_plan.md),
 then the parity-gated portions of
-[`performance_optimization_opportunities.md`](../doc/developments/performance_optimization_opportunities.md).
+[`performance_optimization_opportunities.md`](developments/performance_optimization_opportunities.md).

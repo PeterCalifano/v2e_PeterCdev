@@ -7,7 +7,7 @@ Branch: `feature/extend_error_models_IEBCS_V2CE`
 This is the single current capability/status summary. Detailed findings and
 evidence are in
 [`implementation_review_report.md`](implementation_review_report.md); active
-work is staged under [`../doc/developments/`](../doc/developments/).
+work is staged under [`developments/`](developments/).
 
 ## Validation Snapshot
 
@@ -141,7 +141,7 @@ not a V2CE port or demonstrated de-layering equivalent.
       gates before using “output-equivalent.”
 
 The staged order and tests are in
-[`consolidation_staged_plan.md`](../doc/developments/consolidation_staged_plan.md).
+[`consolidation_staged_plan.md`](developments/consolidation_staged_plan.md).
 
 ## Current Open-Tree Improvements
 
@@ -226,8 +226,8 @@ that adapter and v2e is not declared as a packaged dependency there.
 - Comparative benchmark:
   [`../README_comparative_benchmark.md`](../README_comparative_benchmark.md)
 - Consolidation plan:
-  [`../doc/developments/consolidation_staged_plan.md`](../doc/developments/consolidation_staged_plan.md)
+  [`developments/consolidation_staged_plan.md`](developments/consolidation_staged_plan.md)
 - V2CE timing plan:
-  [`../doc/developments/v2ce_timing_staged_plan.md`](../doc/developments/v2ce_timing_staged_plan.md)
+  [`developments/v2ce_timing_staged_plan.md`](developments/v2ce_timing_staged_plan.md)
 - Performance plan:
-  [`../doc/developments/performance_optimization_opportunities.md`](../doc/developments/performance_optimization_opportunities.md)
+  [`developments/performance_optimization_opportunities.md`](developments/performance_optimization_opportunities.md)

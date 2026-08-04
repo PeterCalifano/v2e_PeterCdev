@@ -7,7 +7,7 @@ Baseline commit: `01c0155` ([MAJOR] Implement relevant IEBCS features)
 Note: this is the historical Python/PyTorch optimization pass. The active
 porting roadmap, including July 4 shared CUDA backend benchmark evidence, is
 tracked in
-[`doc/developments/performance_optimization_opportunities.md`](../doc/developments/performance_optimization_opportunities.md).
+[`docs/developments/performance_optimization_opportunities.md`](developments/performance_optimization_opportunities.md).
 
 Do not treat the fixed speedups, FPS, TBB version, or test count below as current
 branch results. A later rerun produced materially different timing ratios, the
@@ -224,7 +224,7 @@ def hist2d_numba(tracks, bins, ranges):
 - [ ] Use the July 4 benchmark evidence to guide shared C++/CUDA backend work
       rather than treating Cython/TorchScript as the primary porting path
 - [ ] Use the active development roadmap for larger work:
-      [`doc/developments/performance_optimization_opportunities.md`](../doc/developments/performance_optimization_opportunities.md)
+      [`docs/developments/performance_optimization_opportunities.md`](developments/performance_optimization_opportunities.md)
 
 ## Validation
 

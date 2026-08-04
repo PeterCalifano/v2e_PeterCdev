@@ -278,5 +278,5 @@ See:
 
 - [`repo_capabilities_status.md`](repo_capabilities_status.md)
 - [`implementation_review_report.md`](implementation_review_report.md)
-- [`../doc/developments/consolidation_staged_plan.md`](../doc/developments/consolidation_staged_plan.md)
-- [`../doc/developments/v2ce_timing_staged_plan.md`](../doc/developments/v2ce_timing_staged_plan.md)
+- [`developments/consolidation_staged_plan.md`](developments/consolidation_staged_plan.md)
+- [`developments/v2ce_timing_staged_plan.md`](developments/v2ce_timing_staged_plan.md)

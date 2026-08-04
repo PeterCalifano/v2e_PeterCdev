@@ -18,7 +18,7 @@ see [`docs/core_model_mapping.md`](core_model_mapping.md).
 - `test/`: regression tests.
 - `v2ecore/benchmarks/`: repo-native profiling and comparative benchmark
   helpers.
-- `doc/developments/`: staged plans and open development checklists.
+- `docs/developments/`: staged plans and open development checklists.
 
 ## End-to-end pipeline
 
@@ -42,7 +42,7 @@ When editing core code, preserve:
 - Reproducibility when a non-zero seed is provided.
 
 Known violations and their staged tests are tracked in
-[`consolidation_staged_plan.md`](../doc/developments/consolidation_staged_plan.md).
+[`consolidation_staged_plan.md`](developments/consolidation_staged_plan.md).
 
 ## Known hotspots
 
@@ -64,7 +64,7 @@ Preferred order:
 4. Add benchmarks and regression tests in the same change.
 
 For accelerator work, use
-[`doc/developments/performance_optimization_opportunities.md`](../doc/developments/performance_optimization_opportunities.md).
+[`docs/developments/performance_optimization_opportunities.md`](developments/performance_optimization_opportunities.md).
 The current direction is a shared C++/CUDA backend callable from Python and
 Julia, with Python/PyTorch as the reference fallback.
 
