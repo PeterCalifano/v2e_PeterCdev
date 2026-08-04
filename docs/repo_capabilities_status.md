@@ -4,10 +4,13 @@ Status date: 2026-07-28
 Committed baseline: `969dcc5`
 Branch: `feature/extend_error_models_IEBCS_V2CE`
 
-This is the single current capability/status summary. Detailed findings and
-evidence are in
-[`implementation_review_report.md`](implementation_review_report.md); active
-work is staged under [`developments/`](developments/).
+This is the single current capability/status summary: what the repository can do
+today, and how far that has been validated. It deliberately contains no defect
+explanations and no action items.
+
+- Defects, with evidence and suggested fixes: [`findings/`](findings/)
+- Ordered work: [`developments/`](developments/)
+- Full document ownership map: [`README.md`](README.md)
 
 ## Validation Snapshot
 
@@ -120,44 +123,45 @@ event voxels and infers local, voxel/pixel-conditioned timestamps. The current
 options preserve the number of global layers and only relocate them; they are
 not a V2CE port or demonstrated de-layering equivalent.
 
-## Confirmed Open Blockers
+## Blocking Defects
 
-- [ ] Guarantee timestamp monotonicity across successive packets and every
-      writer when latency is enabled.
-- [ ] Rework refractory-state coupling so state evolution precedes renewed event
-      eligibility checks; zero-duration coupling must be inert.
-- [ ] Anchor histogram schedules to the first frame, merge ON/OFF candidates
-      before capping, and integrate noise with refractory/reset state.
-- [ ] Apply refractory filtering from actual candidate timestamps when V2CE
-      non-uniform timing is enabled.
-- [ ] Preserve HDR precision through the complete CLI no-SloMo path.
-- [ ] Clamp the scalar low-pass update and retain a finite HDR dark-response
-      floor.
-- [ ] Define or reject `reset()` while HDF5 recording is active.
-- [ ] Resolve timestamp precision/wrap contracts for long recordings.
-- [ ] Include untracked `v2ecore/model_options.py` atomically with all modules
-      that import it.
-- [ ] Add IEBCS/V2CE derived reference fixtures and distribution-level parity
-      gates before using “output-equivalent.”
+These are the open defects that currently prevent a merge-ready claim. Each is
+described once in [`findings/`](findings/); this table only records that the
+blocker exists and how severe it is.
 
-The staged order and tests are in
-[`consolidation_staged_plan.md`](developments/consolidation_staged_plan.md).
+| Finding | Severity | Effect on capability |
+|---|---|---|
+| [LIFE-001](findings/state_lifecycle.md#life-001) | Critical | `reset()` makes an emulator unusable; blocks sequence reuse |
+| [LIFE-003](findings/state_lifecycle.md#life-003) | Critical | `set_dvs_params()` mid-stream crashes |
+| [STREAM-001](findings/stream_and_io.md#stream-001) | High | Latency produces globally non-monotonic streams in every writer |
+| [IEBCS-001](findings/iebcs_extensions.md#iebcs-001) | High | Histogram noise emits events before the stream start |
+| [IEBCS-002](findings/iebcs_extensions.md#iebcs-002) | High | Non-cumulative noise input is silently misread |
+| [IEBCS-004](findings/iebcs_extensions.md#iebcs-004) | High | Zero-duration refractory coupling is not inert |
+| [IEBCS-005](findings/iebcs_extensions.md#iebcs-005) | High | Refractory interpolation corrupts comparator memory |
+| [V2CE-002](findings/v2ce_timing.md#v2ce-002) | High | Configured refractory period is not enforced under V2CE timing |
+| [LIFE-002](findings/state_lifecycle.md#life-002) | High | `reset()` leaves a stale time origin |
+| [LIFE-004](findings/state_lifecycle.md#life-004) | High | Preset switching discards per-pixel threshold mismatch |
+| [CORE-003](findings/core_model.md#core-003) | High | `filter_tau_const` is accepted and ignored |
 
-## Current Open-Tree Improvements
+Medium and low severity findings, and the full evidence for each entry above,
+are in [`findings/README.md`](findings/README.md).
 
-- [x] Remove duplicate shot-noise generation, memory updates, and writer calls
-      introduced by merge commit `f026560`.
-- [x] Add enum-backed finite option values without changing public CLI strings.
-- [x] Give each emulator private CPU/device random generators and avoid ambient
-      Python/NumPy/PyTorch RNG mutation.
-- [x] Buffer and chunk HDF5 event writes while tracking logical and physical
-      counts separately.
-- [x] Make cleanup idempotent and preserve float HDF5 frame storage.
-- [x] Preserve float TIFF values in `ImageFolderReader`.
-- [x] Add regression coverage for RNG isolation, writer de-duplication, HDF5
-      bookkeeping, enum parsing, and direct HDR boundaries.
-- [ ] Commit or split these changes only after the unresolved behavior fixes are
-      reviewed and the required untracked module is included.
+The ordered work to resolve them is in
+[`developments/consolidation_staged_plan.md`](developments/consolidation_staged_plan.md).
+
+## Open-Tree Changes Awaiting Commit
+
+The working tree carries reviewed improvements that are not yet committed:
+removal of the merge-duplicated shot-noise, memory and writer side effects from
+`f026560`; enum-backed finite options with unchanged public CLI strings; private
+per-emulator random generators; buffered and chunked HDF5 writes with separate
+logical and physical counters; idempotent cleanup; float HDF5 frame storage and
+float TIFF reading; and the regressions covering those paths.
+
+`v2ecore/model_options.py` is untracked but imported by tracked modules, so
+these changes cannot be committed piecemeal. Sequencing and commit boundaries
+are owned by
+[`developments/consolidation_staged_plan.md`](developments/consolidation_staged_plan.md).
 
 ## Recent Commit Reassessment
 
@@ -215,19 +219,13 @@ that adapter and v2e is not declared as a packaged dependency there.
   ETAP uses `rpg_vid2e`, not this repository.
 - `trajectory-to-events`: separate generation pipeline/comparison point.
 
-## Active Documents
+## Related Documents
 
-- Current detailed review:
-  [`implementation_review_report.md`](implementation_review_report.md)
+The full ownership map is in [`README.md`](README.md). The documents this one
+defers to:
+
+- Defect register: [`findings/README.md`](findings/README.md)
 - Extension semantics:
   [`README_error_models_extensions.md`](README_error_models_extensions.md)
-- Core model map:
-  [`core_model_mapping.md`](core_model_mapping.md)
-- Comparative benchmark:
-  [`../README_comparative_benchmark.md`](../README_comparative_benchmark.md)
-- Consolidation plan:
-  [`developments/consolidation_staged_plan.md`](developments/consolidation_staged_plan.md)
-- V2CE timing plan:
-  [`developments/v2ce_timing_staged_plan.md`](developments/v2ce_timing_staged_plan.md)
-- Performance plan:
-  [`developments/performance_optimization_opportunities.md`](developments/performance_optimization_opportunities.md)
+- Core model map: [`core_model_mapping.md`](core_model_mapping.md)
+- Plans: [`developments/`](developments/)

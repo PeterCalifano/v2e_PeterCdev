@@ -1,11 +1,16 @@
 # Core Development Guide
 
-This document is aimed at contributors working on v2e internals,
-especially event-generation performance and correctness.
+Scope: how to work on v2e internals — repository layout, invariants to preserve,
+hotspots, and the benchmark and test workflow. It contains no status claims, no
+defect analysis, and no action items; see [`README.md`](README.md) for which
+document owns each of those.
+
+Before changing event-generation code, read
+[`findings/README.md`](findings/README.md): several invariants listed below are
+currently violated on opt-in paths, and the register records exactly which.
 
 For a paper-aligned math-to-code map of the event model and the anchor IDs used
-throughout the docs,
-see [`docs/core_model_mapping.md`](core_model_mapping.md).
+throughout the docs, see [`core_model_mapping.md`](core_model_mapping.md).
 
 ## Repository map (core-focused)
 
@@ -19,6 +24,8 @@ see [`docs/core_model_mapping.md`](core_model_mapping.md).
 - `v2ecore/benchmarks/`: repo-native profiling and comparative benchmark
   helpers.
 - `docs/developments/`: staged plans and open development checklists.
+- `docs/findings/`: the defect register, one durable entry per issue.
+- `docs/reports/`: frozen dated snapshots, never updated after archiving.
 
 ## End-to-end pipeline
 
@@ -41,8 +48,9 @@ When editing core code, preserve:
   events closer than `refractory_period_s` should be filtered per pixel.
 - Reproducibility when a non-zero seed is provided.
 
-Known violations and their staged tests are tracked in
-[`consolidation_staged_plan.md`](developments/consolidation_staged_plan.md).
+Known violations of these invariants are described in
+[`findings/`](findings/); the ordered work to resolve them is in
+[`developments/consolidation_staged_plan.md`](developments/consolidation_staged_plan.md).
 
 ## Known hotspots
 

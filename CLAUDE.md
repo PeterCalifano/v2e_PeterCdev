@@ -190,18 +190,21 @@ unless you add those preset files locally.
 ## Optimization Notes
 
 Historical optimization measurements are archived in
-`docs/OPTIMIZATION_SUMMARY.md`. Do not reuse their fixed speedup values as
-current results.
+`docs/reports/optimization_pass_2026-02-15.md`. Do not reuse their fixed speedup
+values as current results.
 
 - **`LowPassFilter` scalar ε path** (`emulator_utils.py`): uses in-place
-  `lerp_()`, but currently lacks the tensor path's stability clamp
+  `lerp_()`, lacks the tensor path's stability clamp, and mutates the caller's
+  tensor unlike the tensor path — findings `CORE-001`, `CORE-002`
 - **CPU-GPU transfers** (`emulator.py`): use direct `.item()` and
   `.cpu().numpy()` patterns
-- **`Map_linear_to_log_luminance`**: requires float64 internally for OFF-event numerical stability — see `TODO (TBC)` comment before attempting float32 conversion
+- **`Map_linear_to_log_luminance`**: documented as requiring float64 for
+  OFF-event stability, but that rationale is unverified — see finding
+  `CORE-004` before acting on the `TODO (TBC)` comment
 - **Event buffer pre-allocation**: historical experiment was reverted; current
   code accumulates chunks and concatenates once
 - **Parallel histogram** (`v2e_utils.py`): implemented above a one-million-track
-  threshold, but current tests do not activate that branch
+  threshold, but current tests do not activate that branch — finding `TOOL-007`
 
 Active porting/performance roadmap (shared C++/CUDA backend, Python/Julia
 interfaces, and parity gates):
@@ -220,8 +223,15 @@ When editing core event generation code, preserve:
 - Refractory logic: events closer than `refractory_period_s` filtered per pixel
 - Reproducibility with fixed seeds (`--dvs_emulator_seed`)
 
-Current correctness work is ordered in
+Several of these invariants are currently violated on opt-in paths. Before
+changing event-generation code, read `docs/findings/README.md` — it lists every
+known defect with evidence and a suggested fix. Work is ordered in
 `docs/developments/consolidation_staged_plan.md`.
+
+Documentation ownership rules (which file may contain status, defects, or
+action items) are in `docs/README.md`. In short: defects are described once in
+`docs/findings/`, action items live once in `docs/developments/`, and everything
+else cites an identifier instead of restating.
 
 ### Performance Hotspots
 

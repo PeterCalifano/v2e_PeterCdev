@@ -2,7 +2,7 @@
 
 > Historical audit snapshot from 2026-07-06. Its confirmed defects have been
 > rechecked and merged into the current
-> [`../implementation_review_report.md`](../implementation_review_report.md).
+> [`../findings/`](../findings/) register.
 > Test counts and file locations in this archive intentionally remain tied to
 > that working tree.
 

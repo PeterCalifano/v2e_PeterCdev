@@ -1,19 +1,19 @@
-# v2e Performance Optimization Summary
+# Archived v2e Performance Optimization Pass
+
+> Frozen snapshot from 2026-02-15, retained for provenance. Its open "Future
+> Work" items moved into
+> [`../developments/performance_optimization_opportunities.md`](../developments/performance_optimization_opportunities.md);
+> the correctness defect it flags in the scalar low-pass path is
+> [CORE-001](../findings/core_model.md#core-001).
+>
+> Do **not** treat the speedups, FPS figures, TBB version, or test count below
+> as current results. A later rerun produced materially different timing
+> ratios, and the current environment has a newer TBB runtime. Current status
+> is in [`../repo_capabilities_status.md`](../repo_capabilities_status.md).
 
 Date: 2026-02-15
 Branch: `feature/extend_error_models_IEBCS_V2CE`
 Baseline commit: `01c0155` ([MAJOR] Implement relevant IEBCS features)
-
-Note: this is the historical Python/PyTorch optimization pass. The active
-porting roadmap, including July 4 shared CUDA backend benchmark evidence, is
-tracked in
-[`docs/developments/performance_optimization_opportunities.md`](developments/performance_optimization_opportunities.md).
-
-Do not treat the fixed speedups, FPS, TBB version, or test count below as current
-branch results. A later rerun produced materially different timing ratios, the
-current environment has a newer TBB runtime, and the scalar low-pass path has an
-open stability-clamp defect. Current correctness and validation status is in
-[`repo_capabilities_status.md`](repo_capabilities_status.md).
 
 ## Optimization Overview
 
@@ -126,7 +126,7 @@ Tool: `test/test_end_to_end_perf.py`, `v2ecore/benchmarks/benchmark_emulator.py`
 - Result:
   **83 tests passing**
 - Current branch validation is tracked in
-  [`docs/repo_capabilities_status.md`](repo_capabilities_status.md).
+  [`docs/repo_capabilities_status.md`](../repo_capabilities_status.md).
 
 ## Implementation Details
 
@@ -224,7 +224,7 @@ def hist2d_numba(tracks, bins, ranges):
 - [ ] Use the July 4 benchmark evidence to guide shared C++/CUDA backend work
       rather than treating Cython/TorchScript as the primary porting path
 - [ ] Use the active development roadmap for larger work:
-      [`docs/developments/performance_optimization_opportunities.md`](developments/performance_optimization_opportunities.md)
+      [`docs/developments/performance_optimization_opportunities.md`](../developments/performance_optimization_opportunities.md)
 
 ## Validation
 
@@ -236,7 +236,7 @@ Optimizations in this pass were verified through:
 - End-to-end: emulator maintained 81-97 FPS on DAVIS346 at 346x260
 - Regression: no existing tests broken, no output format changes
 - Current branch validation: see
-  [`docs/repo_capabilities_status.md`](repo_capabilities_status.md)
+  [`docs/repo_capabilities_status.md`](../repo_capabilities_status.md)
 
 ## Conclusion
 
@@ -251,4 +251,4 @@ Overall emulator performance: **97 FPS** on DAVIS346 (346x260) with photorecepto
 
 The original optimization pass ended with 83 tests passing in the validated
 `v2e` conda environment. Current branch validation is tracked in
-[`docs/repo_capabilities_status.md`](repo_capabilities_status.md).
+[`docs/repo_capabilities_status.md`](../repo_capabilities_status.md).

@@ -1,4 +1,15 @@
-# v2e Implementation Review and Re-Evaluation
+# Archived v2e Implementation Review and Re-Evaluation
+
+> Frozen snapshot from 2026-07-28, retained for provenance. Its findings were
+> subsequently re-verified, extended, and moved into the living register at
+> [`../findings/`](../findings/); its action items moved into
+> [`../developments/`](../developments/). Test counts, file paths, and the
+> `Documentation Consolidation` section below describe the tree as it was on
+> that date and are intentionally not updated.
+>
+> For current defects read [`../findings/README.md`](../findings/README.md).
+> For current status read
+> [`../repo_capabilities_status.md`](../repo_capabilities_status.md).
 
 Status date: 2026-07-28
 Committed baseline: `969dcc5`
@@ -326,8 +337,8 @@ IEBCS and V2CE-Toolbox are reference repositories, not dependencies.
 
 Correctness consolidation must precede V2CE Stage 2 and accelerated backend
 work. Follow
-[`consolidation_staged_plan.md`](developments/consolidation_staged_plan.md),
+[`consolidation_staged_plan.md`](../developments/consolidation_staged_plan.md),
 then
-[`v2ce_timing_staged_plan.md`](developments/v2ce_timing_staged_plan.md),
+[`v2ce_timing_staged_plan.md`](../developments/v2ce_timing_staged_plan.md),
 then the parity-gated portions of
-[`performance_optimization_opportunities.md`](developments/performance_optimization_opportunities.md).
+[`performance_optimization_opportunities.md`](../developments/performance_optimization_opportunities.md).

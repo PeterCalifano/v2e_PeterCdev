@@ -1,8 +1,14 @@
-# V2CE-Inspired Timing Development Plan
+# Plan: V2CE-Inspired Timing
 
-Status: Stage 1 implemented; Stages 2-3 blocked on correctness consolidation
+Scope: `--v2ce_nonuniform_burst_timestamps` and
+`--v2ce_burst_timestamps_mode {random,slope}` only. Owns
+[V2CE-001](../findings/v2ce_timing.md#v2ce-001) and
+[V2CE-002](../findings/v2ce_timing.md#v2ce-002).
 
-Public nomenclature remains:
+Status: Stage 1 implemented; Stages 2-3 blocked — see the prerequisite gate.
+Ordering context: [`consolidation_staged_plan.md`](consolidation_staged_plan.md).
+
+Public nomenclature remains unchanged:
 
 - `--v2ce_nonuniform_burst_timestamps`
 - `--v2ce_burst_timestamps_mode {random,slope}`
@@ -26,10 +32,17 @@ voxel-generation network.
 
 ## Prerequisite Gate
 
-- [ ] Complete Stages 1-3 of
-      [`consolidation_staged_plan.md`](consolidation_staged_plan.md).
-- [ ] Guarantee global stream ordering and actual-timestamp refractory checks.
+- [ ] Complete [`plan_event_ordering.md`](plan_event_ordering.md), which owns
+      global stream ordering ([STREAM-001](../findings/stream_and_io.md#stream-001)).
+- [ ] Complete the refractory decisions in
+      [`plan_iebcs_lifecycle.md`](plan_iebcs_lifecycle.md), since
+      [V2CE-002](../findings/v2ce_timing.md#v2ce-002) and
+      [IEBCS-004](../findings/iebcs_extensions.md#iebcs-004) both concern which
+      refractory implementation is active and on what timestamps.
 - [ ] Freeze a reference fixture format and comparison metrics.
+- [ ] Fix [TOOL-002](../findings/tooling_and_benchmarks.md#tool-002) first, or
+      Stage 2 cannot be evaluated: the layering metric is currently computed on
+      a pre-sorted stream.
 
 ## Stage 2: Per-Pixel Analytic Timestamp Inference
 

@@ -2,7 +2,7 @@
 
 > Historical snapshot from 2026-07-04. It is retained for provenance and
 > contains claims superseded by the current
-> [`../implementation_review_report.md`](../implementation_review_report.md).
+> [`../findings/`](../findings/) register.
 > In particular, `97 passed`, blanket IEBCS behavioral alignment, and V2CE
 > de-layering claims are no longer current.
 

@@ -30,13 +30,17 @@ Terminology used below:
 
 ## Compatibility Boundary
 
-- [x] Every extension is opt-in and disabled by default.
-- [x] The public event schema remains `[t, x, y, p]`.
-- [x] Existing V2CE flag names remain unchanged.
-- [x] Finite string options are represented internally by enums while retaining
-      their public CLI strings.
-- [ ] Exact default-path equivalence still needs a committed golden-stream
-      fixture across all writers.
+Guarantees this document commits to:
+
+- Every extension is opt-in and disabled by default.
+- The public event schema remains `[t, x, y, p]`.
+- Existing V2CE flag names and values remain unchanged.
+- Finite string options are represented internally by enums while retaining
+  their public CLI strings.
+
+Not yet guaranteed: exact default-path equivalence across all writers, which
+requires a committed golden-stream fixture. That work is scheduled in
+[`developments/consolidation_staged_plan.md`](developments/consolidation_staged_plan.md).
 
 ## CLI Surface
 
@@ -248,35 +252,43 @@ V2CE output-equivalent or a demonstrated de-layering implementation.
 
 ## Interaction and Stream Contracts
 
-- [x] Per-instance random generators isolate emulator streams from ambient
-      Python, NumPy, and PyTorch RNG state.
-- [x] Packet-local label permutations follow latency sorting.
-- [x] HDF5 buffering tracks logical and physically written event counts
-      separately.
-- [ ] Enforce global timestamp monotonicity across packets and writers.
-- [ ] Apply actual-timestamp refractory checks to non-uniform V2CE layers.
-- [ ] Integrate histogram events with refractory and comparator-memory state.
-- [ ] Define safe `reset()` behavior while HDF5 output is active.
-- [ ] Preserve HDR precision through the complete `v2e.py` no-SloMo path.
+Contracts these mechanisms currently honour:
+
+- Per-instance random generators isolate emulator streams from ambient Python,
+  NumPy, and PyTorch RNG state.
+- Packet-local label permutations follow latency sorting.
+- HDF5 buffering tracks logical and physically written event counts separately.
+
+Contracts they currently **break**, each described once in
+[`findings/`](findings/):
+
+| Contract | Broken by |
+|---|---|
+| Global timestamp monotonicity across packets and writers | [STREAM-001](findings/stream_and_io.md#stream-001) |
+| Refractory period enforced against actual event times | [V2CE-002](findings/v2ce_timing.md#v2ce-002), [IEBCS-004](findings/iebcs_extensions.md#iebcs-004) |
+| Noise events participate in refractory and comparator-memory state | [IEBCS-005](findings/iebcs_extensions.md#iebcs-005), [IEBCS-006](findings/iebcs_extensions.md#iebcs-006) |
+| Noise schedule starts with the stream | [IEBCS-001](findings/iebcs_extensions.md#iebcs-001) |
+| `reset()` is safe while output is active | [LIFE-005](findings/state_lifecycle.md#life-005) |
+| HDR precision survives the complete `v2e.py` no-SloMo path | [CORE-005](findings/core_model.md#core-005) |
 
 ## Validation Standard
 
 Current unit tests validate local mechanics and CLI wiring. They do not validate
-reference equivalence. A parity claim requires:
+reference equivalence.
 
-- [ ] Derived deterministic fixtures from the local IEBCS and V2CE reference
-      repositories.
-- [ ] Event-count, polarity, coordinate, timestamp-distribution, and state
-      comparisons at a shared input/time convention.
-- [ ] Cross-packet ordering and writer round-trip checks.
-- [ ] Interaction tests for latency, refractory, histogram noise, and V2CE
-      timing.
-- [ ] Explicit tolerances and a documented list of intentionally different
-      behavior.
+Before any mechanism in this document may be described as **output-equivalent**,
+it must have: derived deterministic fixtures from the local IEBCS or V2CE
+reference; event-count, polarity, coordinate, timestamp-distribution and state
+comparisons at a shared input/time convention; cross-packet ordering and writer
+round-trip checks; interaction tests against every other enabled mechanism; and
+explicit tolerances with a documented list of intentionally different behaviour.
 
-See:
+None currently meet that bar. Scheduling of this work is owned by
+[`developments/consolidation_staged_plan.md`](developments/consolidation_staged_plan.md).
 
-- [`repo_capabilities_status.md`](repo_capabilities_status.md)
-- [`implementation_review_report.md`](implementation_review_report.md)
-- [`developments/consolidation_staged_plan.md`](developments/consolidation_staged_plan.md)
-- [`developments/v2ce_timing_staged_plan.md`](developments/v2ce_timing_staged_plan.md)
+## Related Documents
+
+- Current capability status:
+  [`repo_capabilities_status.md`](repo_capabilities_status.md)
+- Defect register: [`findings/README.md`](findings/README.md)
+- Plans: [`developments/`](developments/)

@@ -1,6 +1,13 @@
-# Performance and Shared-Backend Development Plan
+# Plan: Performance and Shared Backend
 
-Status: open; blocked on correctness contracts for every model being ported
+Scope: the accelerated C++/CUDA backend, its parity gates, and benchmark
+methodology for porting decisions.
+
+Not in scope: benchmark-harness defects and Python-side hygiene, which are owned
+by [`plan_tooling_hygiene.md`](plan_tooling_hygiene.md).
+
+Status: open; blocked on correctness contracts for every model being ported.
+Ordering context: [`consolidation_staged_plan.md`](consolidation_staged_plan.md).
 
 Temporary July 2026 CUDA, Julia, Python-extension, and ETAP harnesses are
 development evidence outside the supported repository implementation. They
@@ -31,8 +38,9 @@ Evidence limitations:
 
 ## Stage P0: Correctness and Reproducible Baseline
 
-- [ ] Complete the applicable stages in
-      [`consolidation_staged_plan.md`](consolidation_staged_plan.md).
+- [ ] Complete Stages A-D of
+      [`consolidation_staged_plan.md`](consolidation_staged_plan.md). Porting an
+      unfixed model multiplies the cost of every remaining correctness change.
 - [ ] Define reference fixtures for clean, noisy, refractory, latency, HDR, and
       high-burst cases.
 - [ ] Separate kernel time, event materialization, representation construction,
@@ -98,14 +106,19 @@ Python/PyTorch retained as the reference fallback.
 
 These are measurement candidates, not the main architecture:
 
-- [ ] Profile lin-log precision/cast cost before considering a float32 variant.
-- [ ] Re-evaluate the >1,000,000-track histogram branch on the current TBB/Numba
-      environment; do not retain the obsolete “TBB unavailable” claim.
-- [ ] Remove or isolate pytest-collected print-only timing functions.
-- [ ] Profile the photoreceptor-noise calibration loop and remove dead duplicate
-      polynomial code.
+- [ ] Profile lin-log precision/cast cost before considering a float32 variant —
+      blocked on the [CORE-004](../findings/core_model.md#core-004) experiment,
+      which decides whether float64 is required at all.
 - [ ] Reject Cython/TorchScript work unless a current profile shows a dominant
       bottleneck that the shared backend does not address.
+
+The histogram-branch re-evaluation, the print-only timing functions, and the
+photoreceptor-noise calibration loop are hygiene items owned by
+[`plan_tooling_hygiene.md`](plan_tooling_hygiene.md)
+([TOOL-007](../findings/tooling_and_benchmarks.md#tool-007),
+[TOOL-003](../findings/tooling_and_benchmarks.md#tool-003),
+[TOOL-005](../findings/tooling_and_benchmarks.md#tool-005)). They are listed
+there, not here.
 
 ## Completion Criteria
 
