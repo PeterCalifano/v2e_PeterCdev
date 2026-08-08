@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import warnings
 
 import pytest
 
@@ -38,7 +39,7 @@ def _Run_small_benchmark(*, include_all_features_nofile: bool) -> tuple[dict, ob
     return Run_comparative_benchmark(config)
 
 
-def test_comparative_benchmark_smoke_runs_all_expected_profiles():
+def test_comparative_benchmark_smoke_runs_all_expected_profiles() -> None:
     report, _ = _Run_small_benchmark(include_all_features_nofile=True)
 
     profile_names = [profile["name"] for profile in report["profiles"]]
@@ -61,7 +62,7 @@ def test_comparative_benchmark_smoke_runs_all_expected_profiles():
             assert run["timestamp_monotonic"] is True
 
 
-def test_outputs_and_plots_are_generated_and_nonempty(tmp_path: Path):
+def test_outputs_and_plots_are_generated_and_nonempty(tmp_path: Path) -> None:
     config = BenchmarkConfig(
         width=40,
         height=30,
@@ -89,13 +90,15 @@ def test_outputs_and_plots_are_generated_and_nonempty(tmp_path: Path):
     loaded_report = Read_report_json(json_path)
     loaded_artifacts = Build_artifacts_from_report_and_npz(loaded_report, npz_path)
 
-    plot_paths = Make_comparative_plots(
-        report=loaded_report,
-        artifacts=loaded_artifacts,
-        output_dir=tmp_path,
-        plot_format="png",
-        quality_metric_for_pareto="timestamp_w1_us",
-    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        plot_paths = Make_comparative_plots(
+            report=loaded_report,
+            artifacts=loaded_artifacts,
+            output_dir=tmp_path,
+            plot_format="png",
+            quality_metric_for_pareto="timestamp_w1_us",
+        )
 
     expected_keys = {
         "runtime_vs_profile",

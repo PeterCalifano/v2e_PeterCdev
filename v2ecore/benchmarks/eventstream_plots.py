@@ -1,4 +1,9 @@
-"""Visualization utilities for comparative event-stream benchmark reports."""
+"""Build comparative event-stream benchmark visualizations.
+
+Empty streams and undefined metrics are valid benchmark results. Plot builders
+therefore preserve the complete figure set while omitting non-finite points or
+rendering an explicit empty-data annotation.
+"""
 
 from __future__ import annotations
 
@@ -94,7 +99,7 @@ def _Plot_runtime_vs_profile(report: dict[str, Any]) -> plt.Figure:
 def _Plot_quality_vs_runtime_pareto(report: dict[str, Any],
                                     quality_metric_for_pareto: str,
                                     ) -> plt.Figure:
-    """Plot runtime-versus-quality scatter using pairwise/reference metrics."""
+    """Plot finite runtime-versus-quality pairs from comparison metrics."""
     names: list[str] = []
     x_runtime: list[float] = []
     y_quality: list[float] = []
@@ -124,11 +129,27 @@ def _Plot_quality_vs_runtime_pareto(report: dict[str, Any],
         x_runtime.append(runtime)
         y_quality.append(quality)
 
-    fig, ax = plt.subplots(figsize=(9, 7))
-    sns.scatterplot(x=x_runtime, y=y_quality, hue=names, s=140, ax=ax)
+    # Undefined quality metrics are valid for empty streams. Omit only those
+    # points rather than passing NaNs into Matplotlib's coordinate machinery.
+    finite_points_ = [
+        (name_, runtime_, quality_)
+        for name_, runtime_, quality_ in zip(names, x_runtime, y_quality)
+        if np.isfinite(runtime_) and np.isfinite(quality_)
+    ]
 
-    for name, x, y in zip(names, x_runtime, y_quality):
-        ax.text(x, y, f" {name}", va="center", ha="left")
+    fig, ax = plt.subplots(figsize=(9, 7))
+    if finite_points_:
+        finite_names_, finite_runtime_, finite_quality_ = zip(*finite_points_)
+        sns.scatterplot(
+            x=finite_runtime_, y=finite_quality_, hue=finite_names_, s=140,
+            ax=ax)
+        for name_, runtime_, quality_ in finite_points_:
+            ax.text(
+                runtime_, quality_, f" {name_}", va="center", ha="left")
+    else:
+        ax.text(
+            0.5, 0.5, "No finite quality metrics available",
+            ha="center", va="center", transform=ax.transAxes)
 
     ax.set_title("Quality vs Runtime Pareto View")
     ax.set_xlabel("runtime_mean_s")
@@ -140,7 +161,7 @@ def _Plot_quality_vs_runtime_pareto(report: dict[str, Any],
 def _Plot_timestamp_cdf_overlay(report: dict[str, Any],
                                 artifacts: BenchmarkArtifacts,
                                 ) -> plt.Figure:
-    """Overlay timestamp CDFs for all comparison profiles and pseudo-reference."""
+    """Overlay available timestamp CDFs or annotate an empty event set."""
     fig, ax = plt.subplots(figsize=(10, 6))
 
     for profile in report.get("profiles", []):
@@ -161,7 +182,13 @@ def _Plot_timestamp_cdf_overlay(report: dict[str, Any],
     ax.set_title("Event Timestamp CDF Overlay")
     ax.set_xlabel("timestamp (s)")
     ax.set_ylabel("cdf")
-    ax.legend(loc="lower right", fontsize=10)
+    handles_, _labels_ = ax.get_legend_handles_labels()
+    if handles_:
+        ax.legend(loc="lower right", fontsize=10)
+    else:
+        ax.text(
+            0.5, 0.5, "No events available",
+            ha="center", va="center", transform=ax.transAxes)
     fig.tight_layout()
     return fig
 
@@ -220,7 +247,7 @@ def _Plot_event_rate_map_diff_heatmaps(report: dict[str, Any],
 
 
 def _Plot_metric_groupedbars(report: dict[str, Any]) -> plt.Figure:
-    """Plot normalized grouped bars for a compact multi-metric comparison."""
+    """Plot normalized metrics, mapping undefined metric values to zero."""
     metrics = [
         "runtime_mean_s",
         "timestamp_w1_us",
@@ -256,13 +283,21 @@ def _Plot_metric_groupedbars(report: dict[str, Any]) -> plt.Figure:
     normalized: dict[str, list[float]] = {}
     for metric, values in values_by_metric.items():
         # Min-max normalize each metric to [0, 1] for a shared visual scale.
-        arr = np.asarray(values, dtype=np.float64)
-        lo = float(np.nanmin(arr)) if arr.size > 0 else 0.0
-        hi = float(np.nanmax(arr)) if arr.size > 0 else 0.0
-        if hi - lo < 1e-12:
+        arr_ = np.asarray(values, dtype=np.float64)
+        finite_arr_ = arr_[np.isfinite(arr_)]
+        if finite_arr_.size == 0:
             normalized[metric] = [0.0 for _ in values]
         else:
-            normalized[metric] = [float((v - lo) / (hi - lo)) for v in values]
+            lo_ = float(np.min(finite_arr_))
+            hi_ = float(np.max(finite_arr_))
+            if hi_ - lo_ < 1e-12:
+                normalized[metric] = [0.0 for _ in values]
+            else:
+                normalized[metric] = [
+                    float((value_ - lo_) / (hi_ - lo_))
+                    if np.isfinite(value_) else 0.0
+                    for value_ in values
+                ]
 
     for profile_idx, profile_name in enumerate(profile_names):
         for metric in metrics:
