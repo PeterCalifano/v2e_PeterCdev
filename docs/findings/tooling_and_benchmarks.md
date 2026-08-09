@@ -368,3 +368,36 @@ kernel and `0.000609 s` for the parallel kernel, with identical histograms.
 The parallel path is therefore retained: it was approximately 3.1 times faster
 for the production threshold case on the measured runtime. This timing remains
 benchmark evidence, not a test assertion.
+
+---
+
+## TOOL-008
+
+**CLI auto-seed resolution discarded its first random draw**
+
+- **Severity:** Low
+- **Status:** Resolved (functional CLI regression)
+- **Where:** `v2e.py`, `main()`
+
+### Issue
+
+`main()` called `resolve_dvs_emulator_seed()` twice consecutively. For the
+automatic value `--dvs_emulator_seed 0`, the first NumPy random draw was
+discarded and the second was logged and passed to `EventEmulator`. The duplicate
+call was introduced by merge commit `f026560`; it is not upstream behavior or
+part of the IEBCS/V2CE model implementation.
+
+### Why it is an issue
+
+One requested seed resolution should consume one random value. Consuming an
+unobserved extra value unnecessarily changes ambient NumPy RNG state and makes
+the CLI's seeding behavior depend on an accidental duplicate statement. The
+existing test returned the same mocked value for every call, so it could not
+detect the extra draw.
+
+### Resolution
+
+The CLI now resolves the seed once. Its functional regression supplies two
+distinct possible draws, verifies that the first reaches the emulator and log,
+and asserts that NumPy was called exactly once. Explicit positive seed behavior
+is unchanged.

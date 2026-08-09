@@ -3,6 +3,7 @@ import importlib
 import importlib.util
 import logging
 from pathlib import Path
+from unittest.mock import Mock
 
 import cv2
 import numpy as np
@@ -427,7 +428,9 @@ def test_resolve_dvs_emulator_seed_auto_generates_when_zero(monkeypatch: pytest.
     assert first_seed != second_seed
 
 
-def test_main_logs_and_passes_auto_generated_seed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture):
+def test_main_resolves_auto_generated_seed_once(monkeypatch: pytest.MonkeyPatch,
+                                                tmp_path: Path,
+                                                caplog: pytest.LogCaptureFixture) -> None:
     v2e_module = _Import_local_v2e_module()
 
     class StopAfterSeed(RuntimeError):
@@ -436,8 +439,8 @@ def test_main_logs_and_passes_auto_generated_seed(monkeypatch: pytest.MonkeyPatc
     captured_seed: dict[str, int] = {}
 
     class FakeEventEmulator:
-        def __init__(self, *args, **kwargs):
-            captured_seed["value"] = kwargs["seed"]
+        def __init__(self, *_args: object, **kwargs_: object) -> None:
+            captured_seed["value"] = int(kwargs_["seed"])
             raise StopAfterSeed("seed captured")
 
     input_folder = tmp_path / "input_frames_seed_test"
@@ -460,7 +463,8 @@ def test_main_logs_and_passes_auto_generated_seed(monkeypatch: pytest.MonkeyPatc
         "--dvs_emulator_seed", "0",
     ])
 
-    monkeypatch.setattr(v2e_module.np.random, "randint", lambda _low, _high: 54321)
+    seed_draw_mock_ = Mock(side_effect=[54321, 99999])
+    monkeypatch.setattr(v2e_module.np.random, "randint", seed_draw_mock_)
     monkeypatch.setattr(v2e_module, "EventEmulator", FakeEventEmulator)
     monkeypatch.setattr(v2e_module, "Gooey", lambda *args, **kwargs: (lambda: None), raising=False)
     monkeypatch.setattr(v2e_module, "get_args", lambda: (args, [], "v2e test"))
@@ -473,6 +477,7 @@ def test_main_logs_and_passes_auto_generated_seed(monkeypatch: pytest.MonkeyPatc
 
     assert captured_seed["value"] == 54321
     assert "Using DVS emulator seed: 54321 (auto-generated)" in caplog.text
+    seed_draw_mock_.assert_called_once_with(1, 2**31)
 
 
 def test_main_passes_iebcs_and_v2ce_flags_to_emulator(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):

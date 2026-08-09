@@ -724,8 +724,6 @@ def main() -> None: #--check-untyped-defs
     try:
         effective_dvs_seed, auto_seeded = resolve_dvs_emulator_seed(
             args.dvs_emulator_seed)
-        effective_dvs_seed, auto_seeded = resolve_dvs_emulator_seed(
-            args.dvs_emulator_seed)
     except ValueError as e:
         logger.error(str(e))
         v2e_quit(1)

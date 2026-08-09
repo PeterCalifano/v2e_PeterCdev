@@ -97,3 +97,4 @@ are listed as work items in
 | [TOOL-005](tooling_and_benchmarks.md#tool-005) | Medium | Confirmed (inspection) | Noise calibration loop length is unbounded in Python |
 | [TOOL-006](tooling_and_benchmarks.md#tool-006) | Low | Resolved (metadata review) | Package version disagreed with the changelog |
 | [TOOL-007](tooling_and_benchmarks.md#tool-007) | Low | Resolved (functional test) | Parallel histogram branch was never exercised |
+| [TOOL-008](tooling_and_benchmarks.md#tool-008) | Low | Resolved (functional CLI regression) | CLI auto-seed resolution discarded its first random draw |

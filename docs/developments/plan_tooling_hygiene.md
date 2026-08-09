@@ -3,14 +3,14 @@
 Scope: benchmark harnesses, estimator numerics, dead code, packaging metadata,
 and test-suite hygiene. Owns
 [TOOL-001](../findings/tooling_and_benchmarks.md#tool-001) through
-[TOOL-007](../findings/tooling_and_benchmarks.md#tool-007).
+[TOOL-008](../findings/tooling_and_benchmarks.md#tool-008).
 
 Not in scope: the accelerated backend roadmap, which is
 [`performance_optimization_opportunities.md`](performance_optimization_opportunities.md).
 
-Status: active. TOOL-001, TOOL-003, TOOL-004, TOOL-006, and TOOL-007 are
-complete; TOOL-002 and TOOL-005 remain open. Items here are independent of each
-other, except TOOL-002 which is coordinated with
+Status: active. TOOL-001, TOOL-003, TOOL-004, TOOL-006, TOOL-007, and TOOL-008
+are complete; TOOL-002 and TOOL-005 remain open. Items here are independent of
+each other, except TOOL-002 which is coordinated with
 [`plan_event_ordering.md`](plan_event_ordering.md).
 
 ## Benchmarks
@@ -68,10 +68,15 @@ other, except TOOL-002 which is coordinated with
 - [x] Remove the duplicated emulator test shared between
       `test_optimizations.py` and `test_emulator_regression.py`.
 
+## CLI orchestration
+
+- [x] Resolve an auto-generated emulator seed once per CLI run and assert that
+      the same single draw is logged and passed to `EventEmulator` (TOOL-008).
+
 ## Gate
 
 - [x] `conda run -n v2e python -m pytest -q` (`102 passed` in the isolated
-      package-identity candidate).
+      CLI seed candidate).
 - [x] `conda run -n v2e python -m compileall -q v2e.py v2ecore test`.
 - [x] `python3.12 -m compileall -q v2e.py v2ecore test`.
 - [x] `git diff --check`.

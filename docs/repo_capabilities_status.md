@@ -1,7 +1,7 @@
 # v2e Capabilities and Current Status
 
 Status date: 2026-08-09
-Current reviewed baseline: `9f44f7a`
+Current reviewed baseline: `1715eae`
 Branch: `feature/extend_error_models_IEBCS_V2CE`
 
 This is the single current capability/status summary: what the repository can do
@@ -16,7 +16,7 @@ explanations and no action items.
 
 - Environment: `conda run -n v2e python --version` -> `Python 3.11.11`
 - Full suite: `conda run -n v2e python -m pytest -q`
-- Isolated package-identity candidate: `102 passed`
+- Isolated CLI seed candidate: `102 passed`
 - `EventDataGenerationLib` direct conversion: `4 passed`
 - `EventDataGenerationLib` persistent context: `1 passed, 1 failed`; the
   remaining assertion compares different seeds after every fixture stream
@@ -154,11 +154,10 @@ The ordered work to resolve them is in
 
 ## Open-Tree Changes Awaiting Commit
 
-The current candidate gives the extended fork a distinct `2.0.0.dev0`
-prerelease identity, credits its current and original authors, records the
-`v2e-1.7.0` upstream baseline, and separates fork/upstream project URLs. It does
-not create a release tag or change Python/dependency support. Sequencing and
-remaining commit boundaries are owned by
+The current candidate removes a merge-duplicated CLI auto-seed resolution and
+functionally verifies that one generated value is logged and passed to the
+emulator. It does not change explicit positive seeds or emulator-owned random
+streams. Sequencing and remaining commit boundaries are owned by
 [`developments/consolidation_staged_plan.md`](developments/consolidation_staged_plan.md).
 
 ## Recent Commit Reassessment
@@ -195,6 +194,8 @@ remaining commit boundaries are owned by
   dispatcher and removed assertion-free pytest timing modules.
 - `9f44f7a`: consolidated the photoreceptor-noise fit and corrected its
   model-validity diagnostic without changing seeded calibrated outputs.
+- `1715eae`: established the extended fork's `2.0.0.dev0` package identity,
+  authorship, and fork/upstream provenance without creating a release tag.
 
 ## Workspace Integrations
 
