@@ -1,3 +1,17 @@
+"""Configure the public v2e command-line argument parser.
+
+Finite model choices parse directly to string-compatible enums while retaining
+their historical command-line spellings.
+
+Example:
+    parser_ = v2e_args(argparse.ArgumentParser())
+    args_ = parser_.parse_args(["--v2ce_burst_timestamps_mode", "slope"])
+    print(args_.v2ce_burst_timestamps_mode)
+
+Output:
+    slope
+"""
+
 import argparse
 import os
 import logging
@@ -5,6 +19,11 @@ import time
 from pathlib import Path
 from v2ecore.emulator import EventEmulator
 
+from v2ecore.model_options import DvsParamPreset
+from v2ecore.model_options import IebcsNoisePreset
+from v2ecore.model_options import IebcsNoiseSource
+from v2ecore.model_options import RendererColorMode
+from v2ecore.model_options import V2ceBurstTimestampMode
 from v2ecore.renderer import ExposureMode
 
 logger = logging.getLogger(__name__)
@@ -60,18 +79,14 @@ def tuple_type(strings):
     return tuple(mapped_int)
 
 
-def v2e_args(parser):
-    """
+def v2e_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
+    """Populate an argument parser with the standard v2e CLI contract.
 
-    Parameters
-    ----------
-    parser
-        the argparse object to be populated with arguments
+    Args:
+        parser: Parser to populate.
 
-    Returns
-    -------
-     the parser with all the standard v2e arguments
-
+    Returns:
+        The same parser with all standard v2e arguments registered.
     """
     v2ecore_path=os.path.dirname(__file__)
 
@@ -138,7 +153,8 @@ def v2e_args(parser):
     modelGroup = parser.add_argument_group('DVS model')
 
     modelGroup.add_argument(
-        "--dvs_params", type=str, default=None,
+        "--dvs_params", type=DvsParamPreset, default=None,
+        choices=list(DvsParamPreset),
         help="Easy optional setting of parameters for DVS model:"
              "None, 'clean', 'noisy'; 'clean' turns off noise, sets unlimited bandwidth and "
              "makes threshold variation small. 'noisy' sets "
@@ -245,13 +261,15 @@ def v2e_args(parser):
         help="Enable IEBCS-inspired histogram-based background noise model "
              "(disabled by default).")
     modelGroup.add_argument(
-        "--iebcs_noise_source", type=str, default="preset",
-        choices=["preset", "files"],
+        "--iebcs_noise_source", type=IebcsNoiseSource,
+        default=IebcsNoiseSource.PRESET,
+        choices=list(IebcsNoiseSource),
         help="Source of histogram noise distributions for "
              "--iebcs_hist_noise_model.")
     modelGroup.add_argument(
-        "--iebcs_noise_preset", type=str, default="161lux",
-        choices=["3klux", "161lux", "0.1lux"],
+        "--iebcs_noise_preset", type=IebcsNoisePreset,
+        default=IebcsNoisePreset.LUX_161,
+        choices=list(IebcsNoisePreset),
         help="Preset histogram distribution to use when "
              "--iebcs_noise_source=preset.")
     modelGroup.add_argument(
@@ -278,8 +296,9 @@ def v2e_args(parser):
         help="Enable V2CE-inspired non-uniform sub-frame timestamp placement "
              "for multi-event bursts (disabled by default).")
     modelGroup.add_argument(
-        "--v2ce_burst_timestamps_mode", type=str, default="random",
-        choices=["random", "slope"],
+        "--v2ce_burst_timestamps_mode", type=V2ceBurstTimestampMode,
+        default=V2ceBurstTimestampMode.RANDOM,
+        choices=list(V2ceBurstTimestampMode),
         help="Timestamp distribution mode when "
              "--v2ce_nonuniform_burst_timestamps is enabled.")
     modelGroup.add_argument(
@@ -468,8 +487,9 @@ def v2e_args(parser):
         help="Set full scale event count histogram count for DVS videos "
              "to be this many ON or OFF events for full white or black.")
     outGroupDvsVideo.add_argument(
-        "--dvs_vid_color_mode", type=str, default="green_red",
-        choices=["grayscale", "green_red"],
+        "--dvs_vid_color_mode", type=RendererColorMode,
+        default=RendererColorMode.GREEN_RED,
+        choices=list(RendererColorMode),
         help="Color mode for DVS video and preview. "
              "'grayscale' uses white/black event contrast; "
              "'green_red' uses black background with ON events in green and OFF events in red.")

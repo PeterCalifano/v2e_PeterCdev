@@ -30,6 +30,8 @@ from v2ecore.emulator_utils import subtract_leak_current
 from v2ecore.output.ae_text_output import DVSTextOutput
 from v2ecore.output.aedat2_output import AEDat2Output
 from v2ecore.output.aedat4_output import AEDat4Output
+from v2ecore.model_options import DvsParamPreset
+from v2ecore.model_options import V2ceBurstTimestampMode
 from v2ecore.v2e_utils import checkAddSuffix, v2e_quit, video_writer, EventOnlineViewer3D
 
 v2e_logger = logging.getLogger(__name__)
@@ -168,7 +170,7 @@ class EventEmulator(object):
                  iebcs_refractory_state_coupling: bool = False,
                  iebcs_refractory_us: float | None = None,
                  v2ce_nonuniform_burst_timestamps: bool = False,
-                 v2ce_burst_timestamps_mode: str = "random",
+                 v2ce_burst_timestamps_mode: V2ceBurstTimestampMode | str = V2ceBurstTimestampMode.RANDOM,
                  seed: int = 0,
                  output_folder: str | None = None,
                  dvs_h5: str | None = None,
@@ -229,7 +231,7 @@ class EventEmulator(object):
             Refractory period in microseconds for IEBCS-style refractory coupling.
         v2ce_nonuniform_burst_timestamps: bool
             If True, use non-uniform sub-frame timestamps for same-frame event bursts.
-        v2ce_burst_timestamps_mode: str
+        v2ce_burst_timestamps_mode: V2ceBurstTimestampMode | str
             non-uniform timestamp mode, one of "random" or "slope".
         shot_noise_rate_hz: float
             Shot-noise rate in Hz.
@@ -359,11 +361,13 @@ class EventEmulator(object):
         self.v2ce_nonuniform_burst_timestamps = bool(
             v2ce_nonuniform_burst_timestamps)
         
-        self.v2ce_burst_timestamps_mode = str(v2ce_burst_timestamps_mode)
-        if self.v2ce_burst_timestamps_mode not in ("random", "slope"):
+        try:
+            self.v2ce_burst_timestamps_mode = V2ceBurstTimestampMode(
+                v2ce_burst_timestamps_mode)
+        except ValueError as exc:
             raise ValueError(
                 f"v2ce_burst_timestamps_mode must be 'random' or 'slope', got {v2ce_burst_timestamps_mode}"
-            )
+            ) from exc
         self.shot_noise_rate_hz = shot_noise_rate_hz
         self.photoreceptor_noise = photoreceptor_noise
         self.photoreceptor_noise_vrms: float | None = None
@@ -813,17 +817,19 @@ class EventEmulator(object):
         if self.iebcs_hist_noise_model:
             self._init_iebcs_noise_schedule(first_frame_linear.shape)
 
-    def set_dvs_params(self, model: str) -> None:
+    def set_dvs_params(self, model: DvsParamPreset | str) -> None:
         """Apply a named sensor preset before sequence initialization.
 
         Args:
-            model: ``"clean"`` or ``"noisy"``.
+            model: ``"clean"``, ``"noisy"``, or the corresponding enum.
 
         Raises:
             RuntimeError: If frame processing has already initialized derived
                 per-pixel state. Call :meth:`reset` before changing presets.
         """
-        if model not in ("clean", "noisy"):
+        try:
+            preset_ = DvsParamPreset(model)
+        except ValueError:
             v2e_logger.warning(
                 "dvs_params {} not known: "
                 "Using commandline assigned options".format(model))
@@ -833,7 +839,7 @@ class EventEmulator(object):
             raise RuntimeError(
                 "reset the emulator before changing DVS parameters")
 
-        if model == 'clean':
+        if preset_ is DvsParamPreset.CLEAN:
             self.pos_thres_nominal = 0.2
             self.neg_thres_nominal = 0.2
             self.sigma_thres = 0.02
@@ -844,7 +850,7 @@ class EventEmulator(object):
             self.shot_noise_rate_hz = 0  # rate in hz of temporal noise events
             self.refractory_period_s = 0
 
-        elif model == 'noisy':
+        elif preset_ is DvsParamPreset.NOISY:
             self.pos_thres_nominal = 0.2
             self.neg_thres_nominal = 0.2
             self.sigma_thres = 0.05
@@ -872,7 +878,7 @@ class EventEmulator(object):
                         "leak_rate_hz={}\n"
                         "shot_noise_rate_hz={}\n"
                         "refractory_period_s={}".format(
-                            model, self.pos_thres, self.neg_thres,
+                            preset_.value, self.pos_thres, self.neg_thres,
                             self.sigma_thres, self.cutoff_hz,
                             self.leak_rate_hz, self.shot_noise_rate_hz,
                             self.refractory_period_s))
@@ -1290,7 +1296,7 @@ class EventEmulator(object):
         raw = torch.rand((min_ts_steps,), dtype=torch.float32,
                          device=self.device,
                          generator=self._device_generator)
-        if self.v2ce_burst_timestamps_mode == "slope":
+        if self.v2ce_burst_timestamps_mode is V2ceBurstTimestampMode.SLOPE:
             # Simple end-biased mapping for V2CE-like "slope" timing.
             raw = torch.sqrt(raw)
         frac = torch.sort(raw).values

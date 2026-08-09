@@ -18,6 +18,9 @@ Core modules
   SuperSloMo interpolation path and model code.
 - `v2e_args.py`
   Central CLI argument definitions and exposure mode parsing.
+- `model_options.py`
+  Shared finite option domains for CLI parsing, model configuration, renderer
+  color modes, and benchmark profiles. Enum values are the public CLI strings.
 - `output/`
   Event writers (`.txt`, `.aedat2`, `.aedat4`).
 

@@ -21,6 +21,7 @@ import numpy as np
 import torch
 
 from v2ecore.emulator import EventEmulator
+from v2ecore.model_options import V2ceBurstTimestampMode
 
 
 @dataclass(frozen=True)
@@ -129,7 +130,7 @@ def Build_profiles(*, include_all_features_nofile: bool) -> list[BenchmarkProfil
             description="V2CE-inspired non-uniform timestamps (random mode).",
             emulator_kwargs={
                 "v2ce_nonuniform_burst_timestamps": True,
-                "v2ce_burst_timestamps_mode": "random",
+                "v2ce_burst_timestamps_mode": V2ceBurstTimestampMode.RANDOM,
                 "iebcs_latency_jitter_model": False,
                 "iebcs_resample_thresholds_on_event": False,
                 "iebcs_contrast_latency_model": False,
@@ -142,7 +143,7 @@ def Build_profiles(*, include_all_features_nofile: bool) -> list[BenchmarkProfil
             description="V2CE-inspired non-uniform timestamps (slope mode).",
             emulator_kwargs={
                 "v2ce_nonuniform_burst_timestamps": True,
-                "v2ce_burst_timestamps_mode": "slope",
+                "v2ce_burst_timestamps_mode": V2ceBurstTimestampMode.SLOPE,
                 "iebcs_latency_jitter_model": False,
                 "iebcs_resample_thresholds_on_event": False,
                 "iebcs_contrast_latency_model": False,
@@ -193,7 +194,7 @@ def Build_profiles(*, include_all_features_nofile: bool) -> list[BenchmarkProfil
                     "iebcs_refractory_us": 700.0,
                     "iebcs_hist_noise_model": False,
                     "v2ce_nonuniform_burst_timestamps": True,
-                    "v2ce_burst_timestamps_mode": "slope",
+                    "v2ce_burst_timestamps_mode": V2ceBurstTimestampMode.SLOPE,
                 },
             )
         )

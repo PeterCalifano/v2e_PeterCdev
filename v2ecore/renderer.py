@@ -1,3 +1,14 @@
+"""Render event packets as accumulated preview and video frames.
+
+Example:
+    renderer_ = EventRenderer(color_mode=RendererColorMode.GREEN_RED)
+    print(renderer_.color_mode)
+    renderer_.cleanup()
+
+Output:
+    green_red
+"""
+
 import numpy as np
 import cv2
 import os
@@ -10,6 +21,7 @@ from enum import Enum
 from numba import jit, njit
 
 from v2ecore.emulator import EventEmulator
+from v2ecore.model_options import RendererColorMode
 from v2ecore.v2e_utils import video_writer, read_image, checkAddSuffix, v2e_quit
 from v2ecore.v2e_utils import hist2d_numba
 
@@ -24,48 +36,39 @@ class ExposureMode(Enum):
 
 
 class EventRenderer(object):
-    """Class for DVS rendering from events.
-    and by generating DVS from image sequence.
+    """Accumulate DVS events into preview and video frames.
 
-    It only defines the video and event dataset output path
-    and whether to rotate the images.
+    The renderer owns exposure accumulation and output visualization. Event
+    generation remains owned by :class:`EventEmulator`.
 
     @author: Zhe He
     @contact: hezhehz@live.cn
     """
 
-    def __init__(
-            self,
-            full_scale_count=3,
-            output_path=None,
-            dvs_vid=None,
-            preview=False,
-            color_mode='green_red',
-            exposure_mode=ExposureMode.DURATION,  # 'count', 'area-count'
-            exposure_value=1 / 300.0,
-            area_dimension=None,
-            # suffix using dvs_vid file name for the frame times
-            # when not using constant_time
-            frame_times_suffix='-frame_times.txt',
-            avi_frame_rate=30):
-        """ Init.
+    def __init__(self,
+                 full_scale_count: int = 3,
+                 output_path: str | os.PathLike[str] | None = None,
+                 dvs_vid: str | None = None,
+                 preview: bool = False,
+                 color_mode: RendererColorMode | str = RendererColorMode.GREEN_RED,
+                 exposure_mode: ExposureMode = ExposureMode.DURATION,
+                 exposure_value: float | int = 1 / 300.0,
+                 area_dimension: int | None = None,
+                 frame_times_suffix: str = '-frame_times.txt',
+                 avi_frame_rate: float = 30) -> None:
+        """Initialize event accumulation and optional output resources.
 
-        Parameters
-        ----------
-        output_path: str,
-            path of folder to hold output video
-        dvs_vid: str or None, str name of video, e.g. dvs.avi
-            else None.
-        full_scale_count:int,
-            full scale black/white DVS event count value
-        exposure_mode: ExposureMode,
-            mode to finish exposure of DVS frames
-        exposure_value: Numeric,
-            either float duration in seconds or int count
-        area_dimension: int,
-            size of area_count in pixels in output space
-        preview: bool
-            show preview in cv2 window
+        Args:
+            full_scale_count: Event count mapped to full output intensity.
+            output_path: Folder for video and frame-time output.
+            dvs_vid: Optional output video filename.
+            preview: Whether to display rendered frames in an OpenCV window.
+            color_mode: Grayscale or green/red polarity visualization.
+            exposure_mode: Rule used to close an accumulated DVS frame.
+            exposure_value: Duration or event-count threshold for the rule.
+            area_dimension: Area side length for area-count exposure.
+            frame_times_suffix: Suffix for the frame timestamp file.
+            avi_frame_rate: Playback rate written to the output video.
         """
         self.exposure_mode = exposure_mode
         self.exposure_value = exposure_value
@@ -110,7 +113,7 @@ class EventRenderer(object):
 
         self.emulator = None
         self.preview = preview
-        self.color_mode = color_mode
+        self.color_mode = RendererColorMode(color_mode)
         self.preview_resized = False  # flag to keep from sizing the preview
         self.numFramesWritten = 0
         atexit.register(self.cleanup)
@@ -331,7 +334,7 @@ class EventRenderer(object):
 
                 # img output is 0-1 range
                 img = normalize_frame(self.currentFrame, self.full_scale_count)
-                if self.color_mode == 'green_red':
+                if self.color_mode is RendererColorMode.GREEN_RED:
                     color_img = np.zeros(
                         (self.height, self.width, 3), dtype=np.uint8)
                     current_frame_int = self.currentFrame.astype(np.int16)
@@ -379,7 +382,7 @@ class EventRenderer(object):
                 if self.preview:
                     name = str(self.video_output_file_name)
                     cv2.namedWindow(name, cv2.WINDOW_NORMAL)
-                    if self.color_mode == 'green_red':
+                    if self.color_mode is RendererColorMode.GREEN_RED:
                         cv2.imshow(name, color_img)
                     else:
                         cv2.imshow(name, img)

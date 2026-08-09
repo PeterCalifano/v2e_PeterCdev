@@ -40,6 +40,10 @@ from v2ecore.v2e_args import NO_SLOWDOWN
 from v2ecore.renderer import EventRenderer, ExposureMode
 from v2ecore.slomo import SuperSloMo
 from v2ecore.emulator import EventEmulator
+from v2ecore.model_options import IEBCS_NOISE_PRESET_FILES
+from v2ecore.model_options import IebcsNoisePreset
+from v2ecore.model_options import IebcsNoiseSource
+from v2ecore.model_options import V2ceBurstTimestampMode
 from v2ecore.v2e_utils import inputVideoFileDialog
 import logging
 import time
@@ -121,29 +125,40 @@ def resolve_dvs_emulator_seed(requested_seed: int) -> tuple[int, bool]:
     raise ValueError(f'dvs_emulator_seed must be >=0, got {requested_seed}')
 
 
-def resolve_iebcs_noise_paths(
-        noise_source: str,
-        noise_preset: str,
-        noise_pos_path: str | None,
-        noise_neg_path: str | None) -> tuple[str, str]:
-    """Resolve IEBCS histogram-noise file paths from CLI configuration."""
-    if noise_source == "files":
+def resolve_iebcs_noise_paths(noise_source: IebcsNoiseSource | str,
+                              noise_preset: IebcsNoisePreset | str,
+                              noise_pos_path: str | None,
+                              noise_neg_path: str | None) -> tuple[str, str]:
+    """Resolve IEBCS histogram-noise paths from finite CLI options.
+
+    Args:
+        noise_source: Select bundled-path resolution or explicit files.
+        noise_preset: Illuminance preset used for bundled-path resolution.
+        noise_pos_path: Explicit ON-noise CDF path.
+        noise_neg_path: Explicit OFF-noise CDF path.
+
+    Returns:
+        Resolved ON- and OFF-noise CDF paths.
+
+    Raises:
+        ValueError: If an option is unsupported or explicit paths are missing.
+    """
+    source_ = IebcsNoiseSource(noise_source)
+    if source_ is IebcsNoiseSource.FILES:
         if noise_pos_path is None or noise_neg_path is None:
             raise ValueError(
                 '--iebcs_hist_noise_model with --iebcs_noise_source=files '
                 'requires both --iebcs_noise_pos_path and --iebcs_noise_neg_path')
         return noise_pos_path, noise_neg_path
 
-    preset_files = {
-        "3klux": ("noise_pos_3klux.npy", "noise_neg_3klux.npy"),
-        "161lux": ("noise_pos_161lux.npy", "noise_neg_161lux.npy"),
-        "0.1lux": ("noise_pos_0.1lux.npy", "noise_neg_0.1lux.npy"),
-    }
-    if noise_preset not in preset_files:
-        raise ValueError(f'unsupported IEBCS noise preset "{noise_preset}"')
-    pos_name, neg_name = preset_files[noise_preset]
-    base_dir = Path(__file__).resolve().parent / "input" / "iebcs_noise"
-    return str(base_dir / pos_name), str(base_dir / neg_name)
+    try:
+        preset_ = IebcsNoisePreset(noise_preset)
+    except ValueError as exc:
+        raise ValueError(
+            f'unsupported IEBCS noise preset "{noise_preset}"') from exc
+    pos_name_, neg_name_ = IEBCS_NOISE_PRESET_FILES[preset_]
+    base_dir_ = Path(__file__).resolve().parent / "input" / "iebcs_noise"
+    return str(base_dir_ / pos_name_), str(base_dir_ / neg_name_)
 
 
 def main() -> None: #--check-untyped-defs
@@ -354,14 +369,14 @@ def main() -> None: #--check-untyped-defs
     iebcs_latency_clamp_us: float = args.iebcs_latency_clamp_us
     iebcs_latency_slope_jitter: bool = args.iebcs_latency_slope_jitter
     iebcs_hist_noise_model: bool = args.iebcs_hist_noise_model
-    iebcs_noise_source: str = args.iebcs_noise_source
-    iebcs_noise_preset: str = args.iebcs_noise_preset
+    iebcs_noise_source: IebcsNoiseSource = args.iebcs_noise_source
+    iebcs_noise_preset: IebcsNoisePreset = args.iebcs_noise_preset
     iebcs_noise_pos_path: str | None = args.iebcs_noise_pos_path
     iebcs_noise_neg_path: str | None = args.iebcs_noise_neg_path
     iebcs_refractory_state_coupling: bool = args.iebcs_refractory_state_coupling
     iebcs_refractory_us: float | None = args.iebcs_refractory_us
     v2ce_nonuniform_burst_timestamps: bool = args.v2ce_nonuniform_burst_timestamps
-    v2ce_burst_timestamps_mode: str = args.v2ce_burst_timestamps_mode
+    v2ce_burst_timestamps_mode: V2ceBurstTimestampMode = args.v2ce_burst_timestamps_mode
 
     if shot_noise_rate_hz < 0:
         logger.error('shot_noise_rate_hz must be non-negative')

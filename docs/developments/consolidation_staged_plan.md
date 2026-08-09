@@ -66,10 +66,10 @@ Rationale for the order:
 This is the only technical stage this document owns, because it is the only one
 that is inherently cross-cutting.
 
-- [ ] Include `v2ecore/model_options.py` atomically with every module that
-      imports it — the tracked modules currently import an untracked file, so no
-      partial commit is valid.
-- [ ] Keep V2CE public flag names and values unchanged.
+- [x] Include `v2ecore/model_options.py` atomically with every module that
+      imports it so no commit can contain an importer without the defining
+      module.
+- [x] Keep V2CE public flag names and values unchanged.
 - [ ] Expose only validated options through the `EventDataGenerationLib`
       `V2EConfig` adapter.
 - [ ] Declare the v2e dependency at the parent package boundary.

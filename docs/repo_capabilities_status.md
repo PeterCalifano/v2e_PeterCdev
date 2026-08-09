@@ -1,7 +1,7 @@
 # v2e Capabilities and Current Status
 
 Status date: 2026-08-09
-Current reviewed baseline: `7d497f6`
+Current reviewed baseline: `8af99eb`
 Branch: `feature/extend_error_models_IEBCS_V2CE`
 
 This is the single current capability/status summary: what the repository can do
@@ -16,7 +16,7 @@ explanations and no action items.
 
 - Environment: `conda run -n v2e python --version` -> `Python 3.11.11`
 - Full suite: `conda run -n v2e python -m pytest -q`
-- Isolated emulator hot-path candidate: `110 passed`
+- Isolated finite-option candidate: `116 passed`
 - `EventDataGenerationLib` direct conversion: `4 passed`
 - `EventDataGenerationLib` persistent context: `1 passed, 1 failed`; the
   remaining assertion compares different seeds after every fixture stream
@@ -78,6 +78,7 @@ INPUT
 | HDR through SuperSloMo | Interpolator output still uses PNG intermediates | Float HDR preservation unsupported and unvalidated |
 | Core default model | v2e lin-log, bandwidth, thresholds, reset, leak, noise, refractory | Implemented; HDR-dark edge defect remains |
 | Strict model validity | `--strict_model_validity` and direct API policy | Low-pass `eps > 1` fails before clamping; additional invariants remain planned |
+| Finite configuration domains | DVS presets, IEBCS noise source/preset, V2CE timestamp mode, renderer color mode | Native string enums internally; existing CLI strings and legacy direct-API strings remain accepted |
 | CSDVS / SCIDVS | Optional sensor variants | Implemented; SCIDVS one-step state evolution is regression-tested, but reference parity was not revalidated in this audit |
 | IEBCS options | Same broad effect classes exposed as opt-in flags | Experimental; not IEBCS-output-equivalent |
 | V2CE options | Irregular placement of existing global event layers | Experimental; not V2CE local timing inference |
@@ -152,15 +153,11 @@ The ordered work to resolve them is in
 
 ## Open-Tree Changes Awaiting Commit
 
-The current candidate restores single-pass SCIDVS decay, ON comparator-memory
-advancement, and warning accounting after merge `f026560` duplicated those
-operations. It also removes neighboring redundant assignments, messages, and
-shot-noise conversion from the same merge insertion. Other working-tree changes
-include enum-backed finite options with unchanged public CLI strings.
-
-`v2ecore/model_options.py` is untracked but imported by tracked modules, so
-these changes cannot be committed piecemeal. Sequencing and commit boundaries
-are owned by
+The current candidate adds native string-enum domains for finite DVS, IEBCS,
+V2CE, and renderer options. CLI names and values are unchanged, legacy strings
+remain accepted by direct APIs, and benchmark profiles use the same option
+domain as the emulator. The new option module is included atomically with every
+production importer. Sequencing and remaining commit boundaries are owned by
 [`developments/consolidation_staged_plan.md`](developments/consolidation_staged_plan.md).
 
 ## Recent Commit Reassessment
@@ -189,6 +186,8 @@ are owned by
   writer diagnostics, and idempotent final HDF5 flushing.
 - `7d497f6`: restored one dispatch per AEDAT/text writer and one cleanup owner
   per output resource.
+- `8af99eb`: restored single-pass SCIDVS decay, comparator-memory advancement,
+  warning accounting, and neighboring merge-duplicated hot-path operations.
 
 ## Workspace Integrations
 
