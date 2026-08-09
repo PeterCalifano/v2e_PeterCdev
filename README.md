@@ -2,6 +2,11 @@
 
 Python torch + opencv code to go from conventional stroboscopic video frames with low frame rate into realistic synthetic DVS event streams with much higher effective timing precision. v2e includes finite intensity-depenedent photoreceptor bandwidth, Gaussian pixel to pixel event threshold variation, and noise 'leak' events.
 
+This repository is the extended `2.0.0.dev0` development line based on
+[`SensorsINI/v2e`](https://github.com/SensorsINI/v2e) tag `v2e-1.7.0`. The
+current fork is maintained at
+[`PeterCalifano/v2e-extended`](https://github.com/PeterCalifano/v2e-extended).
+
 See the [v2e home page](https://sites.google.com/view/video2events/home) for videos and further information.
 
 Our paper (below) about _v2e_ **debunks incorrect assertions about event cameras that pervade the current computer vision literature.**
@@ -16,12 +21,17 @@ v2e development was supported by the Swiss National Competence Center for Roboti
 
 ## News
 
-See [changelog](https://github.com/SensorsINI/v2e/blob/master/CHANGELOG.md) for latest news
+See the repository [changelog](CHANGELOG.md) for the latest news.
 
-## Contact
+## Authors
 
-Yuhuang Hu (<yuhuang.hu@ini.uzh.ch>)
-Tobi Delbruck (<tobi@ini.uzh.ch>)
+Pietro Califano (<petercalifano.gs@gmail.com>)
+
+Originally developed by:
+
+- Yuhuang Hu (<yuhuang.hu@ini.uzh.ch>)
+- Tobi Delbruck (<tobi@ini.uzh.ch>)
+- Zhe He
 
 ### Citation
 

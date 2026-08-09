@@ -4,12 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "v2e"
-version = "1.5.1"
+version = "2.0.0.dev0"
 description = "Generates synthetic DVS events from conventional video"
 readme = "README.md"
 requires-python = ">=3.7"
 license = { file = "LICENSE" }
 authors = [
+  { name = "Pietro Califano", email = "petercalifano.gs@gmail.com" },
   { name = "Tobi Delbruck", email = "tobi@ini.uzh.ch" },
   { name = "Yuhuang Hu", email = "yuhuang.hu@ini.uzh.ch" },
   { name = "Zhe He" }
@@ -47,7 +48,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/SensorsINI/v2e"
+Homepage = "https://github.com/PeterCalifano/v2e-extended"
+Repository = "https://github.com/PeterCalifano/v2e-extended"
+Upstream = "https://github.com/SensorsINI/v2e"
 
 [project.scripts]
 v2e = "v2e:main"

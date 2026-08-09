@@ -1,7 +1,7 @@
 # v2e Capabilities and Current Status
 
 Status date: 2026-08-09
-Current reviewed baseline: `af1b302`
+Current reviewed baseline: `9f44f7a`
 Branch: `feature/extend_error_models_IEBCS_V2CE`
 
 This is the single current capability/status summary: what the repository can do
@@ -16,7 +16,7 @@ explanations and no action items.
 
 - Environment: `conda run -n v2e python --version` -> `Python 3.11.11`
 - Full suite: `conda run -n v2e python -m pytest -q`
-- Isolated estimator candidate: `102 passed`
+- Isolated package-identity candidate: `102 passed`
 - `EventDataGenerationLib` direct conversion: `4 passed`
 - `EventDataGenerationLib` persistent context: `1 passed, 1 failed`; the
   remaining assertion compares different seeds after every fixture stream
@@ -85,6 +85,7 @@ INPUT
 | Histogram presets | Named `3klux`, `161lux`, `0.1lux` interface | **Unavailable without six external `.npy` files** |
 | Writers | HDF5, AEDAT-2, AEDAT-4, text, AVI/diagnostics | Implemented; packets are dispatched once, output resources are finalized once, and HDF5 uses buffered/chunked appends with logical frame indices; long-time precision and reset boundaries remain open |
 | Comparative visualization | JSON/CSV/NPZ metrics and plots | Implemented; benchmark currently sorts away a raw ordering defect |
+| Package identity | Extended fork retaining package name `v2e` | `2.0.0.dev0`; final v2.0.0 not released |
 | Shared C++/CUDA backend | Development prototypes outside this repo | **Not a repository capability** |
 
 ## Paper Alignment
@@ -153,11 +154,11 @@ The ordered work to resolve them is in
 
 ## Open-Tree Changes Awaiting Commit
 
-The current candidate consolidates the Graca-Delbruck photoreceptor-noise fit
-into its documented helper and makes the noise-rate warning report the boundary
-it enforces. Numerical and diagnostic regressions cover both contracts. The
-calibration loop, package identity, and sensor-behaviour changes remain outside
-this batch. Sequencing and remaining commit boundaries are owned by
+The current candidate gives the extended fork a distinct `2.0.0.dev0`
+prerelease identity, credits its current and original authors, records the
+`v2e-1.7.0` upstream baseline, and separates fork/upstream project URLs. It does
+not create a release tag or change Python/dependency support. Sequencing and
+remaining commit boundaries are owned by
 [`developments/consolidation_staged_plan.md`](developments/consolidation_staged_plan.md).
 
 ## Recent Commit Reassessment
@@ -192,6 +193,8 @@ this batch. Sequencing and remaining commit boundaries are owned by
   native string enums while preserving public CLI nomenclature.
 - `af1b302`: added functional coverage for the million-track histogram
   dispatcher and removed assertion-free pytest timing modules.
+- `9f44f7a`: consolidated the photoreceptor-noise fit and corrected its
+  model-validity diagnostic without changing seeded calibrated outputs.
 
 ## Workspace Integrations
 

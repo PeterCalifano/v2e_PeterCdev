@@ -95,5 +95,5 @@ are listed as work items in
 | [TOOL-003](tooling_and_benchmarks.md#tool-003) | Low | Resolved (numerical test) | Dead polynomial helper was duplicated inline |
 | [TOOL-004](tooling_and_benchmarks.md#tool-004) | Low | Resolved (diagnostic test) | Noise-rate warning text contradicted its own threshold |
 | [TOOL-005](tooling_and_benchmarks.md#tool-005) | Medium | Confirmed (inspection) | Noise calibration loop length is unbounded in Python |
-| [TOOL-006](tooling_and_benchmarks.md#tool-006) | Low | Confirmed (inspection) | Package version disagrees with the changelog |
+| [TOOL-006](tooling_and_benchmarks.md#tool-006) | Low | Resolved (metadata review) | Package version disagreed with the changelog |
 | [TOOL-007](tooling_and_benchmarks.md#tool-007) | Low | Resolved (functional test) | Parallel histogram branch was never exercised |

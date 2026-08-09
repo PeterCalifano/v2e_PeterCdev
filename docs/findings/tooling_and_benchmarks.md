@@ -277,10 +277,10 @@ is cheap.
 
 ## TOOL-006
 
-**Package version disagrees with the changelog**
+**Package version disagreed with the changelog**
 
 - **Severity:** Low
-- **Status:** Confirmed (inspection)
+- **Status:** Resolved (metadata review)
 - **Where:** `pyproject.toml`, `CHANGELOG.md`
 
 ### Issue
@@ -301,6 +301,15 @@ Assign a distinct development version for the extended fork and document its
 upstream baseline and final-release gate. Keep version consistency as an
 explicit release-review responsibility rather than a functional test that
 pins a configuration value.
+
+### Resolution
+
+Package metadata and the changelog now identify this extended line as
+`2.0.0.dev0`, based on upstream tag `v2e-1.7.0`. Metadata credits Pietro
+Califano while preserving the original authors and their available email
+addresses, and points users to both the maintained fork and upstream project.
+The final `v2.0.0` release and tag remain gated on consolidation; no
+version-string test was added.
 
 ---
 

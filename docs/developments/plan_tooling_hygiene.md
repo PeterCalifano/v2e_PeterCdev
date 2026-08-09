@@ -8,9 +8,9 @@ and test-suite hygiene. Owns
 Not in scope: the accelerated backend roadmap, which is
 [`performance_optimization_opportunities.md`](performance_optimization_opportunities.md).
 
-Status: active. TOOL-001, TOOL-003, TOOL-004, and TOOL-007 are complete;
-TOOL-002, TOOL-005, and TOOL-006 remain open. Items here are independent of
-each other, except TOOL-002 which is coordinated with
+Status: active. TOOL-001, TOOL-003, TOOL-004, TOOL-006, and TOOL-007 are
+complete; TOOL-002 and TOOL-005 remain open. Items here are independent of each
+other, except TOOL-002 which is coordinated with
 [`plan_event_ordering.md`](plan_event_ordering.md).
 
 ## Benchmarks
@@ -48,13 +48,14 @@ each other, except TOOL-002 which is coordinated with
 
 ## Packaging
 
-- [ ] Assign a distinct development version to the extended fork and document
-      its upstream baseline and final-release gate (TOOL-006).
+- [x] Set package metadata to `2.0.0.dev0`, credit the current and original
+      authors, and record the fork, upstream baseline, and final-release gate
+      (TOOL-006).
 - [x] Keep version validation as a release-review step rather than a test that
       pins a configuration string (TOOL-006 policy decision).
-- [ ] Reconcile `AGENTS.md` (Python >= 3.12) with the validated environment
-      (Python 3.11.11), or state explicitly that `AGENTS.md` describes a
-      cross-project preference rather than this repository's requirement.
+- [ ] Migrate the checked environment and package support metadata from the
+      legacy Python 3.11 setup to the Python >= 3.12 development target in
+      `AGENTS.md`, then validate the dependency set.
 
 ## Test suite
 
@@ -70,7 +71,7 @@ each other, except TOOL-002 which is coordinated with
 ## Gate
 
 - [x] `conda run -n v2e python -m pytest -q` (`102 passed` in the isolated
-      estimator candidate).
+      package-identity candidate).
 - [x] `conda run -n v2e python -m compileall -q v2e.py v2ecore test`.
 - [x] `python3.12 -m compileall -q v2e.py v2ecore test`.
 - [x] `git diff --check`.

@@ -1,3 +1,40 @@
+# v2.0.0.dev0 (unreleased)
+
+This extended development line retains the `v2e` package name but is no longer
+the original upstream distribution. It is based on upstream tag `v2e-1.7.0`
+and uses a new major prerelease version for the extended model, API, writer,
+and workspace-integration work. A final `v2.0.0` release and tag remain gated
+on consolidation and validation.
+
+**Authors:** Pietro Califano (<petercalifano.gs@gmail.com>)
+
+**Originally developed by:** Tobi Delbruck (<tobi@ini.uzh.ch>), Yuhuang Hu
+(<yuhuang.hu@ini.uzh.ch>), and Zhe He.
+
+## Consolidated in the current development tree
+
+- Added opt-in experimental IEBCS- and V2CE-inspired controls while preserving
+  the public V2CE flag nomenclature.
+- Added enum-backed finite options, private per-emulator random generators,
+  repeatable reset behavior, and expanded functional regression coverage.
+- Preserved floating-point HDR frames in the no-SloMo CLI and HDF5 frame paths.
+- Unified low-pass stability and state-update behavior, and consolidated the
+  documented photoreceptor-noise calibration fit.
+- Buffered HDF5 event output, restored single writer dispatch/finalization,
+  and repaired merge-duplicated emulator state updates.
+- Corrected comparative benchmark paths and empty-data plots, and added
+  functional coverage for the million-track histogram branch.
+
+## Still required before v2.0.0
+
+- Enforce globally monotonic delayed-event output and close the remaining
+  writer precision and reset-boundary findings.
+- Correct and validate the remaining IEBCS pixel-state lifecycle behavior.
+- Implement and validate per-pixel V2CE-style timestamp inference before making
+  an output-equivalence claim.
+- Align the tested environment and package support metadata with the Python
+  3.12 development target.
+
 # v1.6.2
 
 
