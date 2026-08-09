@@ -1,7 +1,7 @@
 # v2e Capabilities and Current Status
 
 Status date: 2026-08-09
-Baseline reviewed before CORE-006: `bc8f17d`
+Current reviewed baseline: `4c3f739`
 Branch: `feature/extend_error_models_IEBCS_V2CE`
 
 This is the single current capability/status summary: what the repository can do
@@ -16,7 +16,12 @@ explanations and no action items.
 
 - Environment: `conda run -n v2e python --version` -> `Python 3.11.11`
 - Full suite: `conda run -n v2e python -m pytest -q`
-- Isolated staged-tree result: `95 passed`
+- Isolated buffered-HDF5 candidate: `105 passed`
+- `EventDataGenerationLib` direct conversion: `4 passed`
+- `EventDataGenerationLib` persistent context: `1 passed, 1 failed`; the
+  remaining assertion compares different seeds after every fixture stream
+  emitted zero events, while HDF5 count-manifest validation passed
+- `event-based-centroiding` v2e bridge/config: `18 passed`
 - Additional development changes remain modified and untracked
 - Readiness: **not merge-ready**
 
@@ -77,7 +82,7 @@ INPUT
 | IEBCS options | Same broad effect classes exposed as opt-in flags | Experimental; not IEBCS-output-equivalent |
 | V2CE options | Irregular placement of existing global event layers | Experimental; not V2CE local timing inference |
 | Histogram presets | Named `3klux`, `161lux`, `0.1lux` interface | **Unavailable without six external `.npy` files** |
-| Writers | HDF5, AEDAT-2, AEDAT-4, text, AVI/diagnostics | Implemented; long-time precision and reset boundaries remain open |
+| Writers | HDF5, AEDAT-2, AEDAT-4, text, AVI/diagnostics | Implemented; HDF5 event rows are buffered/chunked with logical frame indices and an idempotent final flush; long-time precision and reset boundaries remain open |
 | Comparative visualization | JSON/CSV/NPZ metrics and plots | Implemented; benchmark currently sorts away a raw ordering defect |
 | Shared C++/CUDA backend | Development prototypes outside this repo | **Not a repository capability** |
 
@@ -149,10 +154,10 @@ The ordered work to resolve them is in
 
 The working tree carries reviewed improvements that are not yet committed:
 removal of the merge-duplicated shot-noise, memory and writer side effects from
-`f026560`; enum-backed finite options with unchanged public CLI strings; private
-per-emulator random generators; reusable model/time/preset lifecycle state;
-buffered and chunked HDF5 writes with separate logical and physical counters;
-idempotent cleanup; and regressions covering those paths.
+`f026560`; enum-backed finite options with unchanged public CLI strings; and
+buffered/chunked HDF5 writes with separate logical and physical counters,
+idempotent HDF5 finalization, and functional regressions covering that storage
+contract.
 
 `v2ecore/model_options.py` is untracked but imported by tracked modules, so
 these changes cannot be committed piecemeal. Sequencing and commit boundaries
@@ -176,6 +181,10 @@ are owned by
 - `66cdfb4`: fixed the comparative benchmark entrypoint and empty-data plots.
 - `bc8f17d`: consolidated low-pass stability, state aliasing, explicit tau, and
   opt-in strict validity.
+- `4d63a16`: preserved float HDR input through the no-SloMo CLI and HDF5 frame
+  path.
+- `4c3f739`: repaired reset/preset lifecycle ownership and moved stochastic
+  execution to private per-emulator random generators.
 
 ## Workspace Integrations
 

@@ -1,8 +1,9 @@
 """Generate event-camera streams from ordered intensity frames.
 
 EventEmulator owns sensor-model configuration, per-sequence derived state,
-and private random generators. Output adapters own serialization; reset()
-starts a new writer-free sequence without changing configured output objects.
+private random generators, and HDF5 append batching. Output adapters own format
+serialization; reset() starts a new writer-free sequence without changing
+configured output objects.
 """
 from collections.abc import Sequence
 import matplotlib
@@ -56,6 +57,8 @@ class EventEmulator(object):
         MODEL_STATES (dict): Mapping of model states to their display settings.
         MAX_CHANGE_TO_TERMINATE_EULER_SURROUND_STEPPING (float): Threshold for 
             terminating Euler stepping in surround computations.
+        H5_EVENT_CHUNK_ROWS (int): HDF5 event rows allocated per dataset chunk.
+        H5_EVENT_BUFFER_ROWS (int): Event rows collected before a batched write.
         SINGLE_PIXEL_STATES_FILENAME (str): Filename for saving single pixel states.
         SINGLE_PIXEL_MAX_SAMPLES (int): Maximum number of samples for single pixel states.
         SCIDVS_GAIN (float): Gain after highpass filtering for SCIDVS.
@@ -69,6 +72,8 @@ class EventEmulator(object):
             Initializes the EventEmulator with various parameters.
         prepare_storage(n_frames, frame_ts):
             Prepares storage for frame data.
+        h5_writer_stats():
+            Reports logical, buffered, and physically written HDF5 event rows.
         cleanup():
             Cleans up resources and saves data.
         save_recorded_single_pixel_states():
@@ -106,6 +111,8 @@ class EventEmulator(object):
 
     MAX_CHANGE_TO_TERMINATE_EULER_SURROUND_STEPPING = 1e-5
     IEBCS_MAX_NOISE_EVENTS_PER_FRAME_FACTOR = 8
+    H5_EVENT_CHUNK_ROWS = 65536
+    H5_EVENT_BUFFER_ROWS = 65536
 
     SINGLE_PIXEL_STATES_FILENAME = 'pixel-states.dat'
     SINGLE_PIXEL_MAX_SAMPLES = 10000
@@ -401,6 +408,11 @@ class EventEmulator(object):
         self.frame_h5_dataset = None
         self.frame_ts_dataset = None
         self.frame_ev_idx_dataset = None
+        self.h5_event_buffer: list[np.ndarray] = []
+        self.h5_event_buffer_count = 0
+        self.h5_event_logical_count = 0
+        self.h5_event_written_count = 0
+        self.h5_event_flush_count = 0
 
         # aedat or text output
         self.dvs_aedat2 = dvs_aedat2
@@ -506,6 +518,7 @@ class EventEmulator(object):
                     shape=(0, 4),
                     maxshape=(None, 4),
                     dtype="uint32",
+                    chunks=(self.H5_EVENT_CHUNK_ROWS, 4),
                     compression="gzip")
 
             if dvs_aedat2:
@@ -561,6 +574,66 @@ class EventEmulator(object):
 
         atexit.register(self.cleanup)
 
+    def _append_h5_events(self, events_: np.ndarray) -> None:
+        """Buffer serialized event rows and advance the logical row count.
+
+        Frame metadata must see appended events before the writer reaches its
+        flush threshold. Physical dataset growth is therefore deferred while
+        the logical count advances immediately.
+
+        Args:
+            events_: HDF5-schema rows with columns ``[t_us, x, y, polarity]``.
+        """
+        if self.dvs_h5_dataset is None or events_.shape[0] == 0:
+            return
+
+        self.h5_event_buffer.append(events_)
+        self.h5_event_buffer_count += int(events_.shape[0])
+        self.h5_event_logical_count += int(events_.shape[0])
+
+        if self.h5_event_buffer_count >= self.H5_EVENT_BUFFER_ROWS:
+            self._flush_h5_events()
+
+    def _flush_h5_events(self) -> None:
+        """Persist all buffered event rows using one dataset resize."""
+        if self.dvs_h5_dataset is None or self.h5_event_buffer_count == 0:
+            return
+
+        if len(self.h5_event_buffer) == 1:
+            events_ = self.h5_event_buffer[0]
+        else:
+            events_ = np.concatenate(self.h5_event_buffer, axis=0)
+
+        start_ = self.h5_event_written_count
+        stop_ = start_ + int(events_.shape[0])
+        self.dvs_h5_dataset.resize(stop_, axis=0)
+        self.dvs_h5_dataset[start_:stop_] = events_
+
+        self.h5_event_written_count = stop_
+        self.h5_event_flush_count += 1
+        self.h5_event_buffer = []
+        self.h5_event_buffer_count = 0
+
+    def h5_writer_stats(self) -> dict[str, int]:
+        """Return current HDF5 event-writer counters.
+
+        ``logical_event_count`` includes buffered rows. In contrast,
+        ``written_event_count`` reports rows already persisted to the HDF5
+        dataset. The mapping shape is intentionally serialization-friendly for
+        downstream run manifests.
+
+        Returns:
+            Chunk, buffer, logical-row, written-row, and flush counters.
+        """
+        return {
+            "chunk_rows": int(self.H5_EVENT_CHUNK_ROWS),
+            "buffer_rows": int(self.H5_EVENT_BUFFER_ROWS),
+            "buffered_event_count": int(self.h5_event_buffer_count),
+            "logical_event_count": int(self.h5_event_logical_count),
+            "written_event_count": int(self.h5_event_written_count),
+            "flush_count": int(self.h5_event_flush_count),
+        }
+
     def prepare_storage(self,
                         n_frames: int,
                         frame_ts: Sequence[float]) -> None:
@@ -599,7 +672,12 @@ class EventEmulator(object):
             self.frame_ts_dataset = None
             self.frame_ev_idx_dataset = None
 
-    def cleanup(self):
+    def cleanup(self) -> None:
+        """Flush and close output resources.
+
+        HDF5 finalization is idempotent so explicit cleanup and the registered
+        ``atexit`` callback cannot write the final buffered batch twice.
+        """
         if len(self.cs_steps_taken) > 1:
             mean_staps = np.mean(self.cs_steps_taken)
             std_steps = np.std(self.cs_steps_taken)
@@ -607,7 +685,10 @@ class EventEmulator(object):
             v2e_logger.info(
                 f'CSDVS steps statistics: mean+std= {mean_staps:.0f} + {std_steps:.0f} (median= {median_steps:.0f})')
         if self.dvs_h5 is not None:
+            self._flush_h5_events()
             self.dvs_h5.close()
+            self.dvs_h5 = None
+            self.dvs_h5_dataset = None
 
         if self.dvs_aedat2 is not None:
             self.dvs_aedat2.close()
@@ -1804,12 +1885,7 @@ class EventEmulator(object):
                 temp_events[temp_events[:, 3] == -1, 3] = 0
                 temp_events = temp_events.astype(np.uint32)
 
-                # save events
-                self.dvs_h5_dataset.resize(
-                    self.dvs_h5_dataset.shape[0] + temp_events.shape[0],
-                    axis=0)
-
-                self.dvs_h5_dataset[-temp_events.shape[0]:] = temp_events
+                self._append_h5_events(temp_events)
 
             if self.dvs_aedat2 is not None:
                 self.dvs_aedat2.appendEvents(
@@ -1834,10 +1910,10 @@ class EventEmulator(object):
                     self.dvs_text.appendEvents(events)
 
         if self.frame_ev_idx_dataset is not None:
-            # save frame event idx
-            # determine after the events are added
+            # Buffered rows count toward the frame boundary even when the HDF5
+            # dataset has not yet reached its physical flush threshold.
             self.frame_ev_idx_dataset[self.frame_counter - 1] = \
-                self.dvs_h5_dataset.shape[0]
+                self.h5_event_logical_count
 
         if not self.record_single_pixel_states is None:
             if self.single_pixel_sample_count < self.SINGLE_PIXEL_MAX_SAMPLES:

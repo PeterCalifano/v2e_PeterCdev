@@ -15,6 +15,17 @@ Status: open. Prerequisite: none technically, but this changes the
 [`v2ce_timing_staged_plan.md`](v2ce_timing_staged_plan.md) Stage 2 and before
 any accelerated backend work.
 
+## Completed HDF5 Writer Baseline
+
+These storage changes are prerequisites for later delayed-tail finalization;
+they do not resolve any `STREAM-*` finding or change `generate_events()`.
+
+- [x] Buffer and chunk HDF5 event appends while preserving exact serialized
+      event rows.
+- [x] Track logical event rows separately from physically written rows so
+      `frame_idx` remains correct before a buffer flush.
+- [x] Flush the final partial HDF5 batch exactly once during cleanup.
+
 ## Design
 
 - [ ] Define a cross-packet delayed-event owner and its watermark rule: an event

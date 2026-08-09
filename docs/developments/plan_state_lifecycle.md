@@ -76,7 +76,8 @@ Fix the ownership rule once rather than patching each symptom.
       isolated lifecycle candidate).
 - [ ] `EventDataGenerationLib`'s persistent emulation context is checked against
       the chosen contract, since it is the caller that reuses emulators. Its
-      five applicable direct/context tests pass; the fixed-seed pool test still
-      depends on the unreviewed buffered-HDF5 statistics API.
+      direct conversion tests pass, and the fixed-seed pool test now validates
+      HDF5 logical counts. The test still fails its final seed-difference check
+      because the current fixture emits zero events for every compared stream.
 - [x] Mark resolved findings in
       [`../findings/state_lifecycle.md`](../findings/state_lifecycle.md).

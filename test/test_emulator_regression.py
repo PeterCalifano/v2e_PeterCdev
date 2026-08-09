@@ -1,11 +1,21 @@
+from pathlib import Path
 import random
 
+import h5py
 import numpy as np
 import pytest
 
 torch = pytest.importorskip("torch")
 
 from v2ecore.emulator import EventEmulator
+
+
+def _Convert_events_to_h5_rows(events_: np.ndarray) -> np.ndarray:
+    """Convert public event rows to the legacy HDF5 integer schema."""
+    rows_ = np.array(events_, dtype=np.float32)
+    rows_[:, 0] *= 1.0e6
+    rows_[rows_[:, 3] == -1, 3] = 0
+    return rows_.astype(np.uint32)
 
 
 def _assert_event_packet_valid(events: np.ndarray, height: int, width: int) -> None:
@@ -271,6 +281,122 @@ def test_moving_blob_generates_on_and_off_events():
     assert pol == {-1.0, 1.0}
 
 
+def test_h5_writer_buffers_and_preserves_rows_on_cleanup(tmp_path: Path) -> None:
+    """Final cleanup persists the buffered public event stream exactly once."""
+    height_ = 8
+    width_ = 8
+    emulator_ = EventEmulator(
+        pos_thres=0.08,
+        neg_thres=0.08,
+        sigma_thres=0.0,
+        cutoff_hz=0.0,
+        leak_rate_hz=0.0,
+        shot_noise_rate_hz=0.0,
+        photoreceptor_noise=False,
+        refractory_period_s=0.0,
+        seed=13,
+        output_folder=str(tmp_path),
+        output_width=width_,
+        output_height=height_,
+        dvs_h5="events.h5",
+        device="cpu",
+    )
+
+    dark_frame_ = np.zeros((height_, width_), dtype=np.uint8)
+    bright_frame_ = np.full((height_, width_), 255, dtype=np.uint8)
+    assert emulator_.generate_events(dark_frame_, 0.0) is None
+    events_ = emulator_.generate_events(bright_frame_, 1.0 / 30.0)
+
+    assert events_ is not None
+    before_cleanup_ = emulator_.h5_writer_stats()
+    assert before_cleanup_["logical_event_count"] == events_.shape[0]
+    assert before_cleanup_["buffered_event_count"] == events_.shape[0]
+    assert before_cleanup_["written_event_count"] == 0
+    assert emulator_.dvs_h5_dataset.shape[0] == 0
+
+    emulator_.cleanup()
+    after_cleanup_ = emulator_.h5_writer_stats()
+    emulator_.cleanup()
+
+    assert after_cleanup_["buffered_event_count"] == 0
+    assert after_cleanup_["written_event_count"] == events_.shape[0]
+    assert after_cleanup_["flush_count"] == 1
+    assert emulator_.h5_writer_stats() == after_cleanup_
+    with h5py.File(tmp_path / "events.h5", "r") as h5_file_:
+        np.testing.assert_array_equal(
+            h5_file_["events"][:],
+            _Convert_events_to_h5_rows(events_),
+        )
+
+
+def test_h5_writer_flushes_when_buffer_limit_is_reached(tmp_path: Path) -> None:
+    """A full buffer is persisted before final cleanup without changing rows."""
+    emulator_ = EventEmulator(
+        pos_thres=0.08,
+        neg_thres=0.08,
+        sigma_thres=0.0,
+        cutoff_hz=0.0,
+        leak_rate_hz=0.0,
+        shot_noise_rate_hz=0.0,
+        photoreceptor_noise=False,
+        refractory_period_s=0.0,
+        seed=14,
+        output_folder=str(tmp_path),
+        output_width=4,
+        output_height=4,
+        dvs_h5="events.h5",
+        device="cpu",
+    )
+    emulator_.H5_EVENT_BUFFER_ROWS = 1
+
+    dark_frame_ = np.zeros((4, 4), dtype=np.uint8)
+    bright_frame_ = np.full((4, 4), 255, dtype=np.uint8)
+    emulator_.generate_events(dark_frame_, 0.0)
+    events_ = emulator_.generate_events(bright_frame_, 1.0 / 30.0)
+
+    assert events_ is not None
+    stats_ = emulator_.h5_writer_stats()
+    assert stats_["written_event_count"] == events_.shape[0]
+    assert stats_["buffered_event_count"] == 0
+    assert stats_["flush_count"] == 1
+    np.testing.assert_array_equal(
+        emulator_.dvs_h5_dataset[:],
+        _Convert_events_to_h5_rows(events_),
+    )
+    emulator_.cleanup()
+
+
+def test_h5_frame_idx_counts_buffered_events(tmp_path: Path) -> None:
+    """Frame metadata includes events not yet physically written to HDF5."""
+    emulator_ = EventEmulator(
+        pos_thres=0.08,
+        neg_thres=0.08,
+        sigma_thres=0.0,
+        cutoff_hz=0.0,
+        leak_rate_hz=0.0,
+        shot_noise_rate_hz=0.0,
+        photoreceptor_noise=False,
+        refractory_period_s=0.0,
+        seed=15,
+        output_folder=str(tmp_path),
+        output_width=4,
+        output_height=4,
+        dvs_h5="events.h5",
+        device="cpu",
+    )
+    emulator_.prepare_storage(2, [0.0, 1.0 / 30.0])
+
+    dark_frame_ = np.zeros((4, 4), dtype=np.uint8)
+    bright_frame_ = np.full((4, 4), 255, dtype=np.uint8)
+    emulator_.generate_events(dark_frame_, 0.0)
+    events_ = emulator_.generate_events(bright_frame_, 1.0 / 30.0)
+
+    assert events_ is not None
+    assert emulator_.dvs_h5_dataset.shape[0] == 0
+    assert int(emulator_.frame_ev_idx_dataset[1]) == events_.shape[0]
+    emulator_.cleanup()
+
+
 def test_iebcs_latency_jitter_model_delays_timestamps_and_keeps_monotonic():
     height, width = 24, 24
     common_kwargs = dict(
@@ -373,11 +499,10 @@ def test_iebcs_resample_thresholds_on_event_updates_thresholds_only_when_enabled
     assert bool(pos_changed or neg_changed)
 
 
-def _run_burst_timestamp_mode(
-        *,
-        nonuniform_enabled: bool,
-        mode: str,
-        seed: int) -> np.ndarray:
+def _run_burst_timestamp_mode(*,
+                              nonuniform_enabled: bool,
+                              mode: str,
+                              seed: int) -> np.ndarray:
     height, width = 18, 18
     emu = EventEmulator(
         pos_thres=0.08,
