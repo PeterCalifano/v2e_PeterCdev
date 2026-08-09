@@ -1,7 +1,7 @@
-"""Unit tests for performance optimizations in emulator_utils, emulator, and v2e_utils.
+"""Exercise functional contracts of optimized emulator helpers.
 
-Tests verify that optimized code paths produce identical results to the
-original implementations.
+These tests assert numerical results, event-stream invariants, state ownership,
+and diagnostic behavior without benchmarking wall-clock performance.
 """
 import numpy as np
 import pytest
@@ -11,6 +11,7 @@ torch = pytest.importorskip("torch")
 from v2ecore.emulator_utils import (
     Map_linear_to_log_luminance,
     LowPassFilter,
+    apply_low_pass_filter,
     compute_event_map,
 )
 from v2ecore.v2e_utils import hist2d_numba_seq, hist2d_numba_parallel, hist2d_numba
@@ -62,66 +63,202 @@ class TestLinLog:
 class TestLowPassFilterInPlace:
     """Verify the in-place IIR filter produces correct results."""
 
-    def _reference_lpf(self, log_new, lp_log, eps):
+    def _reference_lpf(self,
+                       log_new_: torch.Tensor,
+                       lp_log_: torch.Tensor,
+                       eps_: float | torch.Tensor) -> torch.Tensor:
         """Non-in-place reference: lp + eps * (new - lp)."""
-        return lp_log + eps * (log_new - lp_log)
+        return lp_log_ + eps_ * (log_new_ - lp_log_)
 
-    def test_scalar_eps_path(self):
-        """inten01=None → scalar eps, fully in-place."""
-        lpf = LowPassFilter(cutoff_hz=200.0)
-        log_new = torch.rand(32, 32)
-        lp_log = torch.rand(32, 32)
-        lp_log_copy = lp_log.clone()
+    def test_scalar_eps_path(self) -> None:
+        """The scalar path applies the stable in-place update contract."""
+        filter_ = LowPassFilter(cutoff_hz=200.0)
+        log_new_ = torch.rand(32, 32)
+        lp_log_ = torch.rand(32, 32)
+        lp_log_copy_ = lp_log_.clone()
 
-        delta_time = 0.001
-        tau = lpf.tau
-        eps = delta_time / tau
+        delta_time_ = 0.0001
+        eps_ = min(delta_time_ / filter_.tau, 1.0)
 
-        expected = self._reference_lpf(log_new, lp_log_copy, eps)
-        result = lpf(log_new, lp_log, inten01=None, delta_time=delta_time)
+        expected_ = self._reference_lpf(log_new_, lp_log_copy_, eps_)
+        result_ = filter_(
+            log_new_, lp_log_, inten01=None, delta_time=delta_time_)
 
-        # result should be the same object as lp_log (in-place)
-        assert result.data_ptr() == lp_log.data_ptr()
-        assert torch.allclose(result, expected, atol=1e-6)
+        assert result_ is lp_log_
+        assert torch.allclose(result_, expected_, atol=1e-6)
 
-    def test_tensor_eps_path(self):
-        """inten01 provided → per-pixel eps, fused expression (non-in-place
-        because PyTorch fuses the expression into fewer CUDA kernels)."""
-        lpf = LowPassFilter(cutoff_hz=200.0)
-        log_new = torch.rand(32, 32)
-        lp_log = torch.rand(32, 32)
-        lp_log_copy = lp_log.clone()
-        inten01 = torch.rand(32, 32)
+    def test_tensor_eps_path(self) -> None:
+        """Per-pixel filtering updates and returns the caller-owned state."""
+        filter_ = LowPassFilter(cutoff_hz=200.0)
+        log_new_ = torch.rand(32, 32)
+        lp_log_ = torch.rand(32, 32)
+        lp_log_copy_ = lp_log_.clone()
+        inten01_ = torch.rand(32, 32)
 
-        delta_time = 0.001
-        tau = lpf.tau
-        eps = torch.clamp(inten01 * (delta_time / tau), max=1.0)
+        delta_time_ = 0.0001
+        eps_ = torch.clamp(
+            inten01_ * (delta_time_ / filter_.tau), max=1.0)
 
-        expected = self._reference_lpf(log_new, lp_log_copy, eps)
-        result = lpf(log_new, lp_log, inten01=inten01, delta_time=delta_time)
+        expected_ = self._reference_lpf(log_new_, lp_log_copy_, eps_)
+        result_ = filter_(
+            log_new_, lp_log_, inten01=inten01_, delta_time=delta_time_)
 
-        assert torch.allclose(result, expected, atol=1e-6)
+        assert result_ is lp_log_
+        assert torch.allclose(result_, expected_, atol=1e-6)
 
-    def test_large_eps_clamped(self):
+    def test_large_eps_clamped(self) -> None:
         """When eps > 1, it should be clamped to 1.0."""
-        lpf = LowPassFilter(cutoff_hz=200.0)
-        log_new = torch.ones(8, 8) * 5.0
-        lp_log = torch.zeros(8, 8)
-        inten01 = torch.ones(8, 8)  # max intensity
+        filter_ = LowPassFilter(cutoff_hz=200.0)
+        log_new_ = torch.ones(8, 8) * 5.0
+        lp_log_ = torch.zeros(8, 8)
+        inten01_ = torch.ones(8, 8)
 
-        # Use a large delta_time to make eps > 1
-        result = lpf(log_new, lp_log, inten01=inten01, delta_time=10.0)
+        result_ = filter_(
+            log_new_, lp_log_, inten01=inten01_, delta_time=10.0)
 
-        # With eps clamped to 1.0: result = lp + 1.0*(new - lp) = new
-        assert torch.allclose(result, log_new, atol=1e-6)
+        assert torch.allclose(result_, log_new_, atol=1e-6)
 
-    def test_negative_cutoff_returns_input(self):
+    def test_scalar_large_eps_stops_at_target(self) -> None:
+        """An undersampled scalar update remains a stable interpolation."""
+        filter_ = LowPassFilter(cutoff_hz=1.0)
+        log_new_ = torch.ones(8, 8)
+        lp_log_ = torch.zeros(8, 8)
+
+        result_ = filter_(
+            log_new_, lp_log_, inten01=None, delta_time=1.0)
+
+        assert result_ is lp_log_
+        assert torch.all(result_ >= 0.0)
+        assert torch.all(result_ <= log_new_)
+        assert torch.equal(result_, log_new_)
+
+    def test_strict_scalar_eps_above_one_raises_without_warning(self,
+                                                               caplog: pytest.LogCaptureFixture) -> None:
+        """Strict validity rejects scalar extrapolation before diagnostics."""
+        filter_ = LowPassFilter(
+            cutoff_hz=1.0, strict_model_validity=True)
+        log_new_ = torch.ones((2, 2), dtype=torch.float32)
+        lp_log_ = torch.zeros_like(log_new_)
+
+        with caplog.at_level("WARNING", logger="v2ecore.emulator_utils"):
+            with pytest.raises(ValueError, match=r"eps=.* > 1"):
+                filter_(
+                    log_new_, lp_log_, inten01=None, delta_time=1.0)
+
+        assert caplog.records == []
+        assert torch.equal(lp_log_, torch.zeros_like(lp_log_))
+
+    def test_strict_tensor_eps_above_one_raises(self) -> None:
+        """Strict validity rejects any per-pixel weight requiring a clamp."""
+        filter_ = LowPassFilter(
+            cutoff_hz=1.0, strict_model_validity=True)
+        log_new_ = torch.ones((2, 2), dtype=torch.float32)
+        lp_log_ = torch.zeros_like(log_new_)
+        inten01_ = torch.tensor([[0.05, 0.1], [0.5, 1.0]])
+
+        with pytest.raises(ValueError, match=r"eps=.* > 1"):
+            filter_(
+                log_new_, lp_log_, inten01=inten01_, delta_time=1.0)
+
+        assert torch.equal(lp_log_, torch.zeros_like(lp_log_))
+
+    def test_strict_eps_below_one_remains_warning_only(self,
+                                                       caplog: pytest.LogCaptureFixture) -> None:
+        """Strict validity preserves the existing accuracy-warning boundary."""
+        filter_ = LowPassFilter(
+            cutoff_hz=1.0, strict_model_validity=True)
+        log_new_ = torch.ones((2, 2), dtype=torch.float32)
+        lp_log_ = torch.zeros_like(log_new_)
+
+        with caplog.at_level("WARNING", logger="v2ecore.emulator_utils"):
+            result_ = filter_(
+                log_new_, lp_log_, inten01=None, delta_time=0.1)
+
+        assert result_ is lp_log_
+        assert 0.0 < float(result_[0, 0]) < 1.0
+        assert any("large maximum update" in record_.getMessage()
+                   for record_ in caplog.records)
+
+    def test_explicit_tau_matches_supplied_filter_route(self) -> None:
+        """Both supported construction routes honor the explicit time constant."""
+        log_new_ = torch.ones(8, 8)
+        previous_ = torch.zeros(8, 8)
+        supplied_filter_ = LowPassFilter(cutoff_hz=100.0)
+
+        supplied_result_ = apply_low_pass_filter(
+            log_new_,
+            previous_.clone(),
+            inten01=None,
+            delta_time=1.0e-4,
+            filter_tau_const=1.0,
+            low_pass_filter=supplied_filter_,
+        )
+        constructed_result_ = apply_low_pass_filter(
+            log_new_,
+            previous_.clone(),
+            inten01=None,
+            delta_time=1.0e-4,
+            filter_tau_const=1.0,
+        )
+
+        assert torch.equal(supplied_result_, constructed_result_)
+
+    def test_apply_low_pass_filter_propagates_strict_validity(self) -> None:
+        """Cached and supplied filter routes both enforce strict validity."""
+        log_new_ = torch.ones((2, 2), dtype=torch.float32)
+        previous_ = torch.zeros_like(log_new_)
+
+        for supplied_filter_ in (None, LowPassFilter(cutoff_hz=1.0)):
+            with pytest.raises(ValueError, match=r"eps=.* > 1"):
+                apply_low_pass_filter(
+                    log_new_,
+                    previous_.clone(),
+                    inten01=None,
+                    delta_time=1.0,
+                    cutoff_hz=1.0,
+                    low_pass_filter=supplied_filter_,
+                    strict_model_validity=True,
+                )
+
+    def test_tensor_weight_matches_state_dtype(self) -> None:
+        """Per-pixel weights support caller-owned float64 state."""
+        filter_ = LowPassFilter(tau=1.0)
+        log_new_ = torch.ones((2, 2), dtype=torch.float64)
+        lp_log_ = torch.zeros_like(log_new_)
+        inten01_ = torch.full((2, 2), 0.5, dtype=torch.float32)
+
+        result_ = filter_(
+            log_new_, lp_log_, inten01=inten01_, delta_time=0.5)
+
+        assert result_ is lp_log_
+        assert result_.dtype == torch.float64
+        assert torch.equal(result_, torch.full_like(result_, 0.25))
+
+    def test_disabled_filter_warns_once(self,
+                                        caplog: pytest.LogCaptureFixture) -> None:
+        """Repeated disabled updates emit one actionable warning."""
+        filter_ = LowPassFilter(cutoff_hz=0.0)
+        frame_ = torch.zeros((2, 2), dtype=torch.float32)
+
+        with caplog.at_level("WARNING", logger="v2ecore.emulator_utils"):
+            for _ in range(3):
+                filter_(frame_, frame_, None, delta_time=0.01)
+
+        messages_ = [
+            record_.getMessage()
+            for record_ in caplog.records
+            if "non-positive" in record_.getMessage()
+        ]
+        assert len(messages_) == 1
+
+    def test_negative_cutoff_returns_input(self) -> None:
         """cutoff_hz=0 should return log_new_frame unchanged."""
-        lpf = LowPassFilter(cutoff_hz=0.0)
-        log_new = torch.rand(8, 8)
-        lp_log = torch.rand(8, 8)
-        result = lpf(log_new, lp_log, inten01=None, delta_time=0.001)
-        assert torch.equal(result, log_new)
+        filter_ = LowPassFilter(cutoff_hz=0.0)
+        log_new_ = torch.rand(8, 8)
+        lp_log_ = torch.rand(8, 8)
+        result_ = filter_(
+            log_new_, lp_log_, inten01=None, delta_time=0.001)
+        assert torch.equal(result_, log_new_)
 
 
 # ---------------------------------------------------------------------------

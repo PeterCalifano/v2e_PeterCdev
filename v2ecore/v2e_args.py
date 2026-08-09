@@ -168,6 +168,10 @@ def v2e_args(parser):
              "check output logger warnings. The input sample rate (frame rate) must be fast enough to for accurate IIR lowpass filtering."
     )
     modelGroup.add_argument(
+        "--strict_model_validity", action="store_true",
+        help="Fail when a numerical safeguard would change modeled output. "
+             "Currently enforced for low-pass update weights above one.")
+    modelGroup.add_argument(
         "--leak_rate_hz", type=float, default=0.01,
         # typical for normal illumination levels with Davis cameras
         help="leak event rate per pixel in Hz - "

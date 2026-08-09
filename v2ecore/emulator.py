@@ -135,55 +135,52 @@ class EventEmulator(object):
     # each pixel has its own time constant. The tau's have log normal distribution with this sigma
     SCIDVS_TAU_COV: float = 0.5
 
-    def __init__(
-            self,
-            pos_thres: float = 0.2,
-            neg_thres: float = 0.2,
-            sigma_thres: float = 0.03,
-            cutoff_hz: float = 0.0,
-            leak_rate_hz: float = 0.1,
-            refractory_period_s: float = 0.0,
-            shot_noise_rate_hz: float = 0.0,  # rate in hz of temporal noise events
-            photoreceptor_noise: bool = False,
-            leak_jitter_fraction: float = 0.1,
-            noise_rate_cov_decades: float = 0.1,
-            iebcs_latency_jitter_model: bool = False,
-            iebcs_latency_mean_us: float = 100.0,
-            iebcs_latency_jitter_us: float = 30.0,
-            iebcs_resample_thresholds_on_event: bool = False,
-            iebcs_contrast_latency_model: bool = False,
-            iebcs_latency_tau_us: float = 300.0,
-            iebcs_latency_clamp_us: float = 10000.0,
-            iebcs_latency_slope_jitter: bool = True,
-            iebcs_hist_noise_model: bool = False,
-            iebcs_hist_noise_pos_path: str | None = None,
-            iebcs_hist_noise_neg_path: str | None = None,
-            iebcs_refractory_state_coupling: bool = False,
-            iebcs_refractory_us: float | None = None,
-            v2ce_nonuniform_burst_timestamps: bool = False,
-            v2ce_burst_timestamps_mode: str = "random",
-            seed: int = 0,
-            output_folder: str | None = None,
-            dvs_h5: str | None = None,
-            dvs_aedat2: str | None = None,
-            dvs_aedat4: str | None = None,
-            aedat4_camera_name: str | None = None,
-            dvs_text: str | None = None,
-            # change as you like to see 'baseLogFrame',
-            # 'lpLogFrame', 'diff_frame'
-            show_dvs_model_state: str | None = None,
-            save_dvs_model_state: bool = False,
-            output_width: int | None = None,
-            output_height: int | None = None,
-            device: str = "cuda",
-            cs_lambda_pixels: float | None = None,
-            cs_tau_p_ms: float | None = None,
-            hdr: bool = False,
-            scidvs: bool = False,
-            record_single_pixel_states=None,
-            label_signal_noise=False,
-            hdr_disable_prepro: bool = False,
-    ):
+    def __init__(self,
+                 pos_thres: float = 0.2,
+                 neg_thres: float = 0.2,
+                 sigma_thres: float = 0.03,
+                 cutoff_hz: float = 0.0,
+                 leak_rate_hz: float = 0.1,
+                 refractory_period_s: float = 0.0,
+                 shot_noise_rate_hz: float = 0.0,
+                 photoreceptor_noise: bool = False,
+                 leak_jitter_fraction: float = 0.1,
+                 noise_rate_cov_decades: float = 0.1,
+                 iebcs_latency_jitter_model: bool = False,
+                 iebcs_latency_mean_us: float = 100.0,
+                 iebcs_latency_jitter_us: float = 30.0,
+                 iebcs_resample_thresholds_on_event: bool = False,
+                 iebcs_contrast_latency_model: bool = False,
+                 iebcs_latency_tau_us: float = 300.0,
+                 iebcs_latency_clamp_us: float = 10000.0,
+                 iebcs_latency_slope_jitter: bool = True,
+                 iebcs_hist_noise_model: bool = False,
+                 iebcs_hist_noise_pos_path: str | None = None,
+                 iebcs_hist_noise_neg_path: str | None = None,
+                 iebcs_refractory_state_coupling: bool = False,
+                 iebcs_refractory_us: float | None = None,
+                 v2ce_nonuniform_burst_timestamps: bool = False,
+                 v2ce_burst_timestamps_mode: str = "random",
+                 seed: int = 0,
+                 output_folder: str | None = None,
+                 dvs_h5: str | None = None,
+                 dvs_aedat2: str | None = None,
+                 dvs_aedat4: str | None = None,
+                 aedat4_camera_name: str | None = None,
+                 dvs_text: str | None = None,
+                 show_dvs_model_state: str | None = None,
+                 save_dvs_model_state: bool = False,
+                 output_width: int | None = None,
+                 output_height: int | None = None,
+                 device: str = "cuda",
+                 cs_lambda_pixels: float | None = None,
+                 cs_tau_p_ms: float | None = None,
+                 hdr: bool = False,
+                 scidvs: bool = False,
+                 record_single_pixel_states: tuple[int, int] | None = None,
+                 label_signal_noise: bool = False,
+                 hdr_disable_prepro: bool = False,
+                 strict_model_validity: bool = False) -> None:
         """
         Parameters
         ----------
@@ -261,6 +258,8 @@ class EventEmulator(object):
             Record this pixel states to 'pixel_states.npy'
         label_signal_noise: bool
             Record signal and noise event labels to a CSV file
+        strict_model_validity: bool
+            Raise before a numerical safeguard changes modeled output.
         """
 
         self.no_events_warning_count = 0
@@ -288,7 +287,10 @@ class EventEmulator(object):
 
         # Models of non-idealities
         self.cutoff_hz = cutoff_hz
-        self.low_pass_filter = LowPassFilter(cutoff_hz=self.cutoff_hz)
+        self.strict_model_validity = bool(strict_model_validity)
+        self.low_pass_filter = LowPassFilter(
+            cutoff_hz=self.cutoff_hz,
+            strict_model_validity=self.strict_model_validity)
         self.leak_rate_hz = leak_rate_hz
         self.refractory_period_s = refractory_period_s
 
@@ -736,7 +738,9 @@ class EventEmulator(object):
                             self.sigma_thres, self.cutoff_hz,
                             self.leak_rate_hz, self.shot_noise_rate_hz,
                             self.refractory_period_s))
-        self.low_pass_filter = LowPassFilter(cutoff_hz=self.cutoff_hz)
+        self.low_pass_filter = LowPassFilter(
+            cutoff_hz=self.cutoff_hz,
+            strict_model_validity=self.strict_model_validity)
 
     def reset(self):
         """Reset state so the next frame reinitializes the internal model."""
@@ -816,10 +820,9 @@ class EventEmulator(object):
         self.iebcs_noise_cdf_neg = torch.tensor(
             neg, dtype=torch.float32, device=self.device)
 
-    def _sample_iebcs_noise_delay_s(
-            self,
-            row_indices: torch.Tensor,
-            polarity: int) -> torch.Tensor:
+    def _sample_iebcs_noise_delay_s(self,
+                                    row_indices: torch.Tensor,
+                                    polarity: int) -> torch.Tensor:
         """Sample per-pixel noise inter-arrival delays from histogram CDF rows."""
         if row_indices.numel() == 0:
             return torch.empty((0,), dtype=torch.float32, device=self.device)
@@ -855,11 +858,10 @@ class EventEmulator(object):
         self.iebcs_noise_next_pos_s = (pos_delay * pos_phase).reshape(shape)
         self.iebcs_noise_next_neg_s = (neg_delay * neg_phase).reshape(shape)
 
-    def _build_events_from_coords_with_ts(
-            self,
-            xy: tuple[torch.Tensor, torch.Tensor],
-            ts: torch.Tensor,
-            polarity: int) -> torch.Tensor:
+    def _build_events_from_coords_with_ts(self,
+                                          xy: tuple[torch.Tensor, torch.Tensor],
+                                          ts: torch.Tensor,
+                                          polarity: int) -> torch.Tensor:
         """Build [N,4] events from per-event coordinates and timestamps."""
         n_events = xy[0].shape[0]
         if n_events == 0:
@@ -1007,11 +1009,10 @@ class EventEmulator(object):
         sort_idx = torch.argsort(events[:, 0])
         return events[sort_idx]
 
-    def _apply_refractory_release_interpolation(
-            self,
-            ts: torch.Tensor,
-            delta_time: float,
-            photoreceptor: torch.Tensor) -> None:
+    def _apply_refractory_release_interpolation(self,
+                                                ts: torch.Tensor,
+                                                delta_time: float,
+                                                photoreceptor: torch.Tensor) -> None:
         """Interpolate memory state for pixels that leave refractory before ts."""
         if not self.iebcs_refractory_state_coupling:
             return
@@ -1032,12 +1033,11 @@ class EventEmulator(object):
         # interpolation is applied at most once until a new release is scheduled.
         self.iebcs_refractory_release_ts[released] = self.t_previous
 
-    def _compute_contrast_latency_timestamps(
-            self,
-            xy: tuple[torch.Tensor, torch.Tensor],
-            threshold: torch.Tensor | float,
-            base_ts: torch.Tensor,
-            photoreceptor: torch.Tensor) -> torch.Tensor:
+    def _compute_contrast_latency_timestamps(self,
+                                             xy: tuple[torch.Tensor, torch.Tensor],
+                                             threshold: torch.Tensor | float,
+                                             base_ts: torch.Tensor,
+                                             photoreceptor: torch.Tensor) -> torch.Tensor:
         """Compute IEBCS-inspired contrast-dependent event timestamps."""
         ts_dtype = torch.float32
         if self.iebcs_refractory_release_ts is not None:
@@ -1080,11 +1080,10 @@ class EventEmulator(object):
         self.neg_thres_pre_prob = torch.div(
             self.neg_thres_nominal, self.neg_thres)
 
-    def _sample_signal_timestamps(
-            self,
-            min_ts_steps: int,
-            delta_time: float,
-            t_frame: float) -> tuple[torch.Tensor, float]:
+    def _sample_signal_timestamps(self,
+                                  min_ts_steps: int,
+                                  delta_time: float,
+                                  t_frame: float) -> tuple[torch.Tensor, float]:
         """Generate per-iteration timestamps for same-frame signal bursts.
 
         Returns:
@@ -1120,10 +1119,9 @@ class EventEmulator(object):
         ts = torch.clamp(ts, min=self.t_previous + 1e-9, max=t_frame)
         return ts, ts_step
 
-    def _resample_thresholds_after_signal_events(
-            self,
-            final_pos_evts_frame: torch.Tensor,
-            final_neg_evts_frame: torch.Tensor) -> None:
+    def _resample_thresholds_after_signal_events(self,
+                                                 final_pos_evts_frame: torch.Tensor,
+                                                 final_neg_evts_frame: torch.Tensor) -> None:
         """Optionally apply IEBCS-style threshold reset noise after signal events.
 
         For pixels that emitted ON/OFF signal events in this frame, resample the

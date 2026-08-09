@@ -45,6 +45,33 @@ def test_generate_events_shape_bounds_and_monotonic_timestamps():
     _assert_event_packet_valid(events, height=height, width=width)
 
 
+def test_strict_model_validity_rejects_undersampled_low_pass() -> None:
+    """Direct emulator use fails before an invalid low-pass update is applied."""
+    emulator_ = EventEmulator(
+        pos_thres=0.2,
+        neg_thres=0.2,
+        sigma_thres=0.0,
+        cutoff_hz=1.0,
+        leak_rate_hz=0.0,
+        shot_noise_rate_hz=0.0,
+        refractory_period_s=0.0,
+        seed=71,
+        output_width=4,
+        output_height=4,
+        device="cpu",
+        strict_model_validity=True,
+    )
+    dark_frame_ = np.zeros((4, 4), dtype=np.uint8)
+    bright_frame_ = np.full((4, 4), 255, dtype=np.uint8)
+
+    try:
+        assert emulator_.generate_events(dark_frame_, 0.0) is None
+        with pytest.raises(ValueError, match=r"eps=.* > 1"):
+            emulator_.generate_events(bright_frame_, 1.0)
+    finally:
+        emulator_.cleanup()
+
+
 def _run_seeded_sequence(seed: int) -> np.ndarray:
     height, width = 16, 16
     emu = EventEmulator(

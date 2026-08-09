@@ -413,6 +413,7 @@ def test_main_passes_iebcs_and_v2ce_flags_to_emulator(monkeypatch: pytest.Monkey
         "--iebcs_refractory_us", "700",
         "--v2ce_nonuniform_burst_timestamps", "true",
         "--v2ce_burst_timestamps_mode", "slope",
+        "--strict_model_validity",
     ])
 
     monkeypatch.setattr(v2e_module, "EventEmulator", FakeEventEmulator)
@@ -440,6 +441,7 @@ def test_main_passes_iebcs_and_v2ce_flags_to_emulator(monkeypatch: pytest.Monkey
     assert captured_kwargs["iebcs_refractory_us"] == 700.0
     assert captured_kwargs["v2ce_nonuniform_burst_timestamps"] is True
     assert captured_kwargs["v2ce_burst_timestamps_mode"] == "slope"
+    assert captured_kwargs["strict_model_validity"] is True
 
 
 def test_set_output_dimension_supports_dvxplorer_preset():

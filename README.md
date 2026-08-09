@@ -597,9 +597,17 @@ See our technical paper for futher information about these parameters.
 ### Photoreceptor lowpass filtering
 
 _v2e_ includes an intensity-dependent 1st-order lowpass filtering of light intensity; see the paper for details.
-If you set a nonzero --cutofffreq_hz, then it is important that the sample rate be high enough to allow the IIR lowpass filters to update properly, i.e.
+If you set a nonzero `--cutoff_hz`, then it is important that the sample rate be high enough to allow the IIR lowpass filters to update properly, i.e.
 the time constant tau of the lowpass filters must be at least 3 times larger than the frame interval.
 Check the console output for warnings about undersampling for lowpass filtering.
+
+The default execution path bounds an update weight above one to prevent the
+discrete filter from extrapolating beyond its current input. Use
+`--strict_model_validity` when this safeguard must instead fail the run: weights
+in `0.3 < eps <= 1` still produce the existing accuracy warning, while
+`eps > 1` raises before warning, clamping, or updating filter state. Strict
+validity currently enforces this low-pass contract; additional model invariants
+are tracked in the consolidation plans.
 
 ### Frame rate and DVS timestamp resolution in v2e
 

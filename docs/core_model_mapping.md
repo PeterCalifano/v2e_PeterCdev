@@ -61,17 +61,20 @@ L_{\mathrm{lp},k-1}
 +\epsilon_k\left(L_k-L_{\mathrm{lp},k-1}\right).
 $$
 
-The intensity-dependent path uses
+The implementation uses
 
 $$
 \epsilon_k(x,y)
 =
-\min\left(I_{01,k}(x,y)\frac{\Delta t_k}{\tau},1\right).
+\min\left(s_k(x,y)\frac{\Delta t_k}{\tau},1\right),
 $$
 
-The scalar path currently uses \(\epsilon_k=\Delta t_k/\tau\) without the same
-upper clamp. That is an open correctness defect for large
-\(\Delta t_k/\tau\), not an intended model difference.
+where \(s_k=I_{01,k}\) when intensity-dependent bandwidth is enabled and
+\(s_k=1\) otherwise. Both routes clamp \(\epsilon_k\le1\), update the supplied
+state tensor in place, and warn for poorly sampled large update weights. With
+`strict_model_validity=True`, an update requiring the \(\epsilon_k\le1\) clamp
+raises before warning or state mutation; the warning-only interval
+\(0.3<\epsilon_k\le1\) remains unchanged.
 
 Search anchors:
 

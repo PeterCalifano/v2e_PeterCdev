@@ -67,9 +67,9 @@ are listed as work items in
 
 | ID | Severity | Status | Title |
 |---|---|---|---|
-| [CORE-001](core_model.md#core-001) | Medium | Confirmed (probe) | Scalar low-pass path has no `eps <= 1` clamp |
-| [CORE-002](core_model.md#core-002) | Medium | Confirmed (probe) | `LowPassFilter` mutates caller state on one path only |
-| [CORE-003](core_model.md#core-003) | High | Confirmed (probe) | `apply_low_pass_filter` silently ignores `filter_tau_const` |
+| [CORE-001](core_model.md#core-001) | Medium | Resolved (test) | Scalar low-pass path lacked an `eps <= 1` clamp |
+| [CORE-002](core_model.md#core-002) | Medium | Resolved (test) | `LowPassFilter` mutated caller state on one path only |
+| [CORE-003](core_model.md#core-003) | High | Resolved (test) | `apply_low_pass_filter` silently ignored `filter_tau_const` |
 | [CORE-004](core_model.md#core-004) | Open question | Confirmed (probe) | float64 lin-log rationale is not supported by its own rounding grid |
 | [CORE-005](core_model.md#core-005) | Medium | Confirmed (inspection) | HDR preprocessing has no dark-response floor |
 | [LIFE-001](state_lifecycle.md#life-001) | Critical | Confirmed (probe) | `reset()` then reuse raises `TypeError` |

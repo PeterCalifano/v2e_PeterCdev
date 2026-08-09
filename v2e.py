@@ -726,6 +726,7 @@ def main() -> None: #--check-untyped-defs
     emulator = EventEmulator(
         pos_thres=pos_thres, neg_thres=neg_thres,
         sigma_thres=sigma_thres, cutoff_hz=cutoff_hz,
+        strict_model_validity=args.strict_model_validity,
         leak_rate_hz=leak_rate_hz, shot_noise_rate_hz=shot_noise_rate_hz, photoreceptor_noise=args.photoreceptor_noise,
         leak_jitter_fraction=args.leak_jitter_fraction,
         noise_rate_cov_decades=args.noise_rate_cov_decades,

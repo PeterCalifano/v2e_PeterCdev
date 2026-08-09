@@ -10,10 +10,10 @@ Conventions and severity definitions: [`README.md`](README.md).
 
 ## CORE-001
 
-**Scalar low-pass path has no `eps <= 1` clamp**
+**Scalar low-pass path lacked an `eps <= 1` clamp**
 
 - **Severity:** Medium
-- **Status:** Confirmed (probe)
+- **Status:** Resolved (functional regression)
 - **Where:** `v2ecore/emulator_utils.py`, `LowPassFilter.__call__`, anchor
   `KEY[E-LPF-IIR]` (scalar branch)
 
@@ -63,14 +63,22 @@ scalar-path configuration warns exactly as the tensor path does. Add a
 regression asserting the scalar result stays within `[old, target]` for
 `delta_time / tau >> 1`.
 
+### Resolution
+
+The scalar and intensity-dependent routes now share the warning and
+`eps <= 1` clamp before applying the update. The regression verifies that a
+large scalar step reaches, but does not overshoot, its target. The optional
+`strict_model_validity` policy raises before warning, clamping, or mutating state
+when either route computes `eps > 1`; `0.3 < eps <= 1` remains warning-only.
+
 ---
 
 ## CORE-002
 
-**`LowPassFilter` mutates caller state on one path only**
+**`LowPassFilter` mutated caller state on one path only**
 
 - **Severity:** Medium
-- **Status:** Confirmed (probe)
+- **Status:** Resolved (functional regression)
 - **Where:** `v2ecore/emulator_utils.py`, `LowPassFilter.__call__`
 
 ### Issue
@@ -108,14 +116,20 @@ form is retained for performance, rename the method to make the mutation
 visible (`update_` / `apply_inplace`) and make **both** branches in-place so the
 contract stops depending on `inten01`.
 
+### Resolution
+
+The selected contract is in-place mutation for both routes. Tests assert that
+each route returns the exact supplied state object and produces the expected
+filtered values.
+
 ---
 
 ## CORE-003
 
-**`apply_low_pass_filter` silently ignores `filter_tau_const`**
+**`apply_low_pass_filter` silently ignored `filter_tau_const`**
 
 - **Severity:** High
-- **Status:** Confirmed (probe)
+- **Status:** Resolved (functional regression)
 - **Where:** `v2ecore/emulator_utils.py`, `apply_low_pass_filter`
 
 ### Issue
@@ -177,6 +191,12 @@ defensible either way.
 Note the cache in `_LOW_PASS_FILTER_CACHE` is keyed on
 `(cutoff_hz, filter_tau_const)`, so the self-constructed route is already
 correct; only the injected-instance route is wrong.
+
+### Resolution
+
+The wrapper forwards `filter_tau_const` and `strict_model_validity` to supplied
+filter instances. Regressions compare the supplied-instance and internally
+constructed routes for the same explicit time constant and strict policy.
 
 ---
 

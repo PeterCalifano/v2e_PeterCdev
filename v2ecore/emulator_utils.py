@@ -1,7 +1,27 @@
-"""Collections of emulator utilities.
+"""Provide numerical primitives for event-camera emulation.
 
-Author: Yuhuang Hu, Tobi Delbruck
-Email : yuhuang.hu@ini.uzh.ch, tobi@ini.uzh.ch
+This module owns lin-log conversion, caller-owned photoreceptor filtering,
+event-map quantization, and stochastic sensor-noise helpers. ``LowPassFilter``
+updates a supplied state tensor in place so state ownership remains with the
+emulator.
+
+Example:
+    import torch
+
+    from v2ecore.emulator_utils import LowPassFilter
+
+    target_ = torch.ones((1, 1))
+    state_ = torch.zeros_like(target_)
+    result_ = LowPassFilter(tau=1.0)(
+        target_, state_, inten01=None, delta_time=0.25)
+    print(result_)
+
+Output:
+    tensor([[0.2500]])
+
+Authors: Pietro Califano <petercalifano.gs@gmail.com>
+Originally developed by: Yuhuang Hu <yuhuang.hu@ini.uzh.ch>,
+    Tobi Delbruck <tobi@ini.uzh.ch>
 """
 import logging
 import math
@@ -63,112 +83,196 @@ IIR_MAX_WARNINGS = 10
 
 
 class LowPassFilter:
-    """Callable first-order IIR low-pass filter with precomputed time constant."""
+    """First-order IIR filter with an explicit in-place state contract.
 
-    __slots__ = ("cutoff_hz", "tau", "iir_warning_count")
+    The caller owns ``lp_log_frame``. A successful filtered update mutates and
+    returns that same tensor; disabled filtering returns ``log_new_frame``
+    unchanged. The object retains only filter configuration and warning counts.
+    """
 
-    def __init__(self, cutoff_hz: float = 0.0, tau: float | None = None):
+    __slots__ = (
+        "cutoff_hz",
+        "tau",
+        "strict_model_validity",
+        "iir_warning_count",
+        "disabled_warning_count",
+    )
+
+    def __init__(self,
+                 cutoff_hz: float = 0.0,
+                 tau: float | None = None,
+                 strict_model_validity: bool = False) -> None:
+        """Initialize the default filter time constant.
+
+        Args:
+            cutoff_hz: Photoreceptor low-pass cutoff in Hz.
+            tau: Explicit time constant in seconds. When present, it takes
+                precedence over ``cutoff_hz``.
+            strict_model_validity: Raise before an update weight above one
+                would be clamped.
+        """
         self.cutoff_hz = float(cutoff_hz)
         if tau is None:
-            self.tau = 1 / \
-                (2 * math.pi * self.cutoff_hz) if self.cutoff_hz > 0 else -1.0
+            self.tau = (
+                1 / (2 * math.pi * self.cutoff_hz)
+                if self.cutoff_hz > 0
+                else -1.0
+            )
         else:
             self.tau = float(tau)
+        self.strict_model_validity = bool(strict_model_validity)
         self.iir_warning_count = 0
+        self.disabled_warning_count = 0
 
     def __call__(self,
                  log_new_frame: torch.Tensor,
                  lp_log_frame: torch.Tensor,
                  inten01: torch.Tensor | None,
                  delta_time: float,
-                 filter_tau_const: float | None = None) -> torch.Tensor:
+                 filter_tau_const: float | None = None,
+                 strict_model_validity: bool = False) -> torch.Tensor:
+        """Advance the supplied low-pass state by one frame.
 
-        # Get the time constant tau for the low-pass filter. If cutoff_hz is non-positive, skip filtering.
+        Args:
+            log_new_frame: Current lin-log brightness tensor.
+            lp_log_frame: Caller-owned filtered state to update in place.
+            inten01: Optional per-pixel bandwidth scale.
+            delta_time: Time since the previous frame in seconds.
+            filter_tau_const: Optional per-call time-constant override.
+            strict_model_validity: Tighten this call to strict execution. A
+                strictly configured filter cannot be weakened per call.
+
+        Returns:
+            The updated ``lp_log_frame`` object, or ``log_new_frame`` when
+            filtering is disabled.
+        """
+
+        # Resolve the per-call override before the object's configured default.
         if filter_tau_const is not None:
-            tau = filter_tau_const
+            tau_ = filter_tau_const
         else:
-            tau = self.tau if self.tau > 0 else (
+            tau_ = self.tau if self.tau > 0 else (
                 1 / (2 * math.pi * self.cutoff_hz) if self.cutoff_hz > 0 else -1.0)
 
-        if tau <= 0:
-            logger.warning(
-                f'cutoff_hz={self.cutoff_hz} is non-positive, skipping low-pass filtering')
+        if tau_ <= 0:
+            if self.disabled_warning_count == 0:
+                logger.warning(
+                    f'cutoff_hz={self.cutoff_hz} is non-positive; '
+                    'skipping low-pass filtering')
+            self.disabled_warning_count += 1
             return log_new_frame
 
-        delta_over_tau = delta_time / tau
+        delta_over_tau_ = delta_time / tau_
 
-        # make the update proportional to the local intensity
-        # the more intensity, the shorter the time constant
-        if inten01 is not None:
-            # KEY[E-LPF-EPS]: intensity-dependent update strength epsilon scales
-            # the filter bandwidth with brightness.
-            eps = inten01 * delta_over_tau
+        # KEY[E-LPF-EPS]: brightness scales the update weight when available.
+        # Scalar and per-pixel paths share stability and warning behavior.
+        eps_: float | torch.Tensor = (
+            delta_over_tau_
+            if inten01 is None
+            else inten01 * delta_over_tau_
+        )
+        max_eps_ = (
+            float(torch.max(eps_).item())
+            if isinstance(eps_, torch.Tensor)
+            else eps_
+        )
 
-            max_eps = torch.max(eps)
+        # Strict execution must not silently replace extrapolation with a
+        # clamped approximation or mutate the caller-owned state.
+        strict_model_validity_ = (
+            self.strict_model_validity or strict_model_validity)
+        if strict_model_validity_ and max_eps_ > 1.0:
+            minimum_sample_rate_hz_ = max_eps_ / delta_time
+            raise ValueError(
+                'Low-pass update requires clamping with '
+                f'strict_model_validity=True: eps={max_eps_:.6g} > 1, '
+                f'delta_time={delta_time:.6g}s, tau={tau_:.6g}s, '
+                f'cutoff_hz={self.cutoff_hz:.6g}Hz. Increase the input '
+                f'sample rate to at least {minimum_sample_rate_hz_:.6g}Hz '
+                'or reduce cutoff_hz.')
 
-            if max_eps > 0.3 and self.iir_warning_count < IIR_MAX_WARNINGS:
+        if max_eps_ > 0.3 and self.iir_warning_count < IIR_MAX_WARNINGS:
+            logger.warning(
+                f'IIR lowpass filter update has large maximum update '
+                f'eps={max_eps_:.2f} from '
+                f'delta_time/tau={delta_time:.3g}/{tau_:.3g}')
+            self.iir_warning_count += 1
+
+            if self.iir_warning_count == IIR_MAX_WARNINGS:
                 logger.warning(
-                    f'IIR lowpass filter update has large maximum update eps={max_eps:.2f} from delta_time/tau={delta_time:.3g}/{tau:.3g}')
-                self.iir_warning_count += 1
+                    'Suppressing further warnings about inaccurate IIR '
+                    'low-pass filtering; check timestamp resolution and DVS '
+                    'photoreceptor cutoff frequency')
 
-                if self.iir_warning_count == IIR_MAX_WARNINGS:
-                    logger.warning(
-                        'Supressing further warnings about inaccurate IIR lowpass filtering; check timestamp resolution and DVS photoreceptor cutoff frequency')
-
-            eps = torch.clamp(eps, max=1.0)
-
-            # KEY[E-LPF-IIR]: first-order IIR update for filtered log intensity Llp.
-            # Non-in-place expression: PyTorch fuses the element-wise ops into
-            # fewer CUDA kernels than lerp_ with a tensor weight.
-            return lp_log_frame + eps * (log_new_frame - lp_log_frame)
+        # Keep the interpolation stable and make tensor weights compatible
+        # with the caller-owned state before the in-place operation.
+        if isinstance(eps_, torch.Tensor):
+            eps_ = torch.clamp(eps_, max=1.0).to(
+                dtype=lp_log_frame.dtype,
+                device=lp_log_frame.device,
+            )
         else:
-            # Scalar eps path: lerp_ also accepts scalar weight.
-            # KEY[E-LPF-IIR]: first-order IIR update for filtered log intensity Llp.
-            eps = delta_over_tau
-            lp_log_frame.lerp_(log_new_frame, eps)
-            return lp_log_frame
+            eps_ = min(eps_, 1.0)
+
+        # KEY[E-LPF-IIR]: update the caller-owned photoreceptor state using one
+        # explicit in-place contract for scalar and per-pixel weights.
+        return lp_log_frame.lerp_(log_new_frame, eps_)
 
 
-_LOW_PASS_FILTER_CACHE: dict[tuple[float, float | None], LowPassFilter] = {}
+_LOW_PASS_FILTER_CACHE: dict[
+    tuple[float, float | None, bool], LowPassFilter] = {}
 
 
-def apply_low_pass_filter(log_new_frame,
-                          lp_log_frame,
-                          inten01,
-                          delta_time,
-                          cutoff_hz=0,
+def apply_low_pass_filter(log_new_frame: torch.Tensor,
+                          lp_log_frame: torch.Tensor,
+                          inten01: torch.Tensor | None,
+                          delta_time: float,
+                          cutoff_hz: float = 0.0,
                           filter_tau_const: float | None = None,
-                          low_pass_filter: LowPassFilter | None = None):
-    """Compute intensity-dependent low-pass filter.
+                          low_pass_filter: LowPassFilter | None = None,
+                          strict_model_validity: bool = False) -> torch.Tensor:
+    """Apply a cached or caller-supplied low-pass filter.
 
-    # Arguments
-        log_new_frame: new frame in lin-log representation.
-        lp_log_frame:
-        inten01: the scaling of filter time constant array, or None to not scale
-        delta_time:
-        cutoff_hz:
-        filter_tau_const: if not None, use this fixed time constant instead of computing it from cutoff_hz  
-        low_pass_filter:
+    Args:
+        log_new_frame: Current lin-log brightness tensor.
+        lp_log_frame: Caller-owned filtered state.
+        inten01: Optional per-pixel bandwidth scale.
+        delta_time: Time since the previous frame in seconds.
+        cutoff_hz: Cutoff used when constructing a cached filter.
+        filter_tau_const: Optional time-constant override in seconds.
+        low_pass_filter: Optional filter instance. The time-constant override
+            is forwarded to it rather than silently discarded.
+        strict_model_validity: Raise before a low-pass update would be clamped.
 
-    # Returns
-        new_lp_log_frame
+    Returns:
+        Updated low-pass state according to ``LowPassFilter``'s aliasing
+        contract.
     """
-    if low_pass_filter is None:
+    active_filter_ = low_pass_filter
+    if active_filter_ is None:
+        tau_key_ = (
+            None
+            if filter_tau_const is None
+            else float(filter_tau_const)
+        )
+        cache_key_ = (
+            float(cutoff_hz), tau_key_, bool(strict_model_validity))
+        active_filter_ = _LOW_PASS_FILTER_CACHE.get(cache_key_)
 
-        cache_key = (float(cutoff_hz), None if filter_tau_const is None else float(
-            filter_tau_const))
-        low_pass_filter = _LOW_PASS_FILTER_CACHE.get(cache_key)
+        if active_filter_ is None:
+            active_filter_ = LowPassFilter(
+                cutoff_hz=cutoff_hz,
+                tau=filter_tau_const,
+                strict_model_validity=strict_model_validity)
+            _LOW_PASS_FILTER_CACHE[cache_key_] = active_filter_
 
-        if low_pass_filter is None:
-            low_pass_filter = LowPassFilter(
-                cutoff_hz=cutoff_hz, tau=filter_tau_const)
-            _LOW_PASS_FILTER_CACHE[cache_key] = low_pass_filter
-
-    return low_pass_filter(
+    return active_filter_(
         log_new_frame=log_new_frame,
         lp_log_frame=lp_log_frame,
         inten01=inten01,
-        delta_time=delta_time)
+        delta_time=delta_time,
+        filter_tau_const=filter_tau_const,
+        strict_model_validity=strict_model_validity)
 
 
 def subtract_leak_current(base_log_frame,
@@ -255,13 +359,12 @@ class PhotoreceptorNoiseVoltageEstimator:
         "num_threshold_samples",
     )
 
-    def __init__(
-            self,
-            seed: int | None = None,
-            sample_rate_rel_tolerance: float = 0.1,
-            value_rel_tolerance: float = 1e-6,
-            value_abs_tolerance: float = 1e-12,
-            num_threshold_samples: int = 300):
+    def __init__(self,
+                 seed: int | None = None,
+                 sample_rate_rel_tolerance: float = 0.1,
+                 value_rel_tolerance: float = 1e-6,
+                 value_abs_tolerance: float = 1e-12,
+                 num_threshold_samples: int = 300) -> None:
         self._rng = np.random.default_rng(seed)
         self._last_args: tuple[float, float, float, float, float, float] | None = None
         self._last_vn: float | None = None
@@ -446,13 +549,12 @@ class PhotoreceptorNoiseVoltageEstimator:
 _DEFAULT_PHOTORECEPTOR_NOISE_ESTIMATOR = PhotoreceptorNoiseVoltageEstimator()
 
 
-def compute_photoreceptor_noise_voltage(
-        shot_noise_rate_hz: float,
-        f3db: float,
-        sample_rate_hz: float,
-        pos_thr: float,
-        neg_thr: float,
-        sigma_thr: float) -> float:
+def compute_photoreceptor_noise_voltage(shot_noise_rate_hz: float,
+                                        f3db: float,
+                                        sample_rate_hz: float,
+                                        pos_thr: float,
+                                        neg_thr: float,
+                                        sigma_thr: float) -> float:
     """Backward-compatible wrapper around a shared estimator instance."""
     
     return _DEFAULT_PHOTORECEPTOR_NOISE_ESTIMATOR(
