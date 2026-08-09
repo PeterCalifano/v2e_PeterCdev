@@ -15,9 +15,9 @@ Status: open. Prerequisite: none technically, but this changes the
 [`v2ce_timing_staged_plan.md`](v2ce_timing_staged_plan.md) Stage 2 and before
 any accelerated backend work.
 
-## Completed HDF5 Writer Baseline
+## Completed Writer Baseline
 
-These storage changes are prerequisites for later delayed-tail finalization;
+These writer changes are prerequisites for later delayed-tail finalization;
 they do not resolve any `STREAM-*` finding or change `generate_events()`.
 
 - [x] Buffer and chunk HDF5 event appends while preserving exact serialized
@@ -25,6 +25,10 @@ they do not resolve any `STREAM-*` finding or change `generate_events()`.
 - [x] Track logical event rows separately from physically written rows so
       `frame_idx` remains correct before a buffer flush.
 - [x] Flush the final partial HDF5 batch exactly once during cleanup.
+- [x] Dispatch each returned event packet exactly once to every enabled
+      AEDAT-2, AEDAT-4, and text adapter.
+- [x] Close or release each output adapter and diagnostic video writer exactly
+      once across explicit cleanup and the registered `atexit` callback.
 
 ## Design
 

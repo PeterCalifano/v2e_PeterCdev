@@ -675,8 +675,8 @@ class EventEmulator(object):
     def cleanup(self) -> None:
         """Flush and close output resources.
 
-        HDF5 finalization is idempotent so explicit cleanup and the registered
-        ``atexit`` callback cannot write the final buffered batch twice.
+        Writer references are cleared after closure so explicit cleanup and the
+        registered ``atexit`` callback cannot finalize an output twice.
         """
         if len(self.cs_steps_taken) > 1:
             mean_staps = np.mean(self.cs_steps_taken)
@@ -692,19 +692,24 @@ class EventEmulator(object):
 
         if self.dvs_aedat2 is not None:
             self.dvs_aedat2.close()
+            self.dvs_aedat2 = None
 
         if self.dvs_aedat4 is not None:
             self.dvs_aedat4.close()
+            self.dvs_aedat4 = None
 
         if self.dvs_text is not None:
             try:
                 self.dvs_text.close()
-            except:
-                pass
+            except Exception as exception_:
+                v2e_logger.warning(
+                    f'could not close text DVS output: {exception_}')
+            self.dvs_text = None
 
-        for vw in self.video_writers:
-            v2e_logger.info(f'closing video AVI {vw}')
-            self.video_writers[vw].release()
+        for writer_name_, video_writer_ in self.video_writers.items():
+            v2e_logger.info(f'closing video AVI {writer_name_}')
+            video_writer_.release()
+        self.video_writers = {}
 
         if not self.record_single_pixel_states is None:
             self.save_recorded_single_pixel_states()
@@ -1890,20 +1895,13 @@ class EventEmulator(object):
             if self.dvs_aedat2 is not None:
                 self.dvs_aedat2.appendEvents(
                     events, signnoise_label=signnoise_label)
-                self.dvs_aedat2.appendEvents(
-                    events, signnoise_label=signnoise_label)
 
             if self.dvs_aedat4 is not None:
                 self.dvs_aedat4.appendEvents(
                     events, signnoise_label=signnoise_label)
 
-                self.dvs_aedat4.appendEvents(
-                    events, signnoise_label=signnoise_label)
-
             if self.dvs_text is not None:
                 if self.label_signal_noise:
-                    self.dvs_text.appendEvents(
-                        events, signnoise_label=signnoise_label)
                     self.dvs_text.appendEvents(
                         events, signnoise_label=signnoise_label)
                 else:

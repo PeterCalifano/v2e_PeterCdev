@@ -1,7 +1,7 @@
 # v2e Capabilities and Current Status
 
 Status date: 2026-08-09
-Current reviewed baseline: `4c3f739`
+Current reviewed baseline: `8eae13c`
 Branch: `feature/extend_error_models_IEBCS_V2CE`
 
 This is the single current capability/status summary: what the repository can do
@@ -16,7 +16,7 @@ explanations and no action items.
 
 - Environment: `conda run -n v2e python --version` -> `Python 3.11.11`
 - Full suite: `conda run -n v2e python -m pytest -q`
-- Isolated buffered-HDF5 candidate: `105 passed`
+- Isolated output-writer candidate: `107 passed`
 - `EventDataGenerationLib` direct conversion: `4 passed`
 - `EventDataGenerationLib` persistent context: `1 passed, 1 failed`; the
   remaining assertion compares different seeds after every fixture stream
@@ -82,7 +82,7 @@ INPUT
 | IEBCS options | Same broad effect classes exposed as opt-in flags | Experimental; not IEBCS-output-equivalent |
 | V2CE options | Irregular placement of existing global event layers | Experimental; not V2CE local timing inference |
 | Histogram presets | Named `3klux`, `161lux`, `0.1lux` interface | **Unavailable without six external `.npy` files** |
-| Writers | HDF5, AEDAT-2, AEDAT-4, text, AVI/diagnostics | Implemented; HDF5 event rows are buffered/chunked with logical frame indices and an idempotent final flush; long-time precision and reset boundaries remain open |
+| Writers | HDF5, AEDAT-2, AEDAT-4, text, AVI/diagnostics | Implemented; packets are dispatched once, output resources are finalized once, and HDF5 uses buffered/chunked appends with logical frame indices; long-time precision and reset boundaries remain open |
 | Comparative visualization | JSON/CSV/NPZ metrics and plots | Implemented; benchmark currently sorts away a raw ordering defect |
 | Shared C++/CUDA backend | Development prototypes outside this repo | **Not a repository capability** |
 
@@ -185,6 +185,8 @@ are owned by
   path.
 - `4c3f739`: repaired reset/preset lifecycle ownership and moved stochastic
   execution to private per-emulator random generators.
+- `8eae13c`: added buffered/chunked HDF5 event appends, logical frame indices,
+  writer diagnostics, and idempotent final HDF5 flushing.
 
 ## Workspace Integrations
 

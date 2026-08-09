@@ -7,7 +7,32 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
+import v2ecore.emulator as emulator_module
 from v2ecore.emulator import EventEmulator
+
+
+class _OutputSpy:
+    """Record emulator adapter dispatch and closure counts."""
+
+    def __init__(self, *_args_: object, **_kwargs_: object) -> None:
+        self.append_count = 0
+        self.close_count = 0
+
+    def appendEvents(self, events_: np.ndarray, **_kwargs_: object) -> None:
+        self.append_count += 1
+
+    def close(self) -> None:
+        self.close_count += 1
+
+
+class _VideoWriterSpy:
+    """Record video-writer release calls."""
+
+    def __init__(self) -> None:
+        self.release_count = 0
+
+    def release(self) -> None:
+        self.release_count += 1
 
 
 def _Convert_events_to_h5_rows(events_: np.ndarray) -> np.ndarray:
@@ -174,11 +199,13 @@ def test_photoreceptor_noise_different_seeds_produce_different_streams():
     assert not np.array_equal(stream_a, stream_b)
 
 
-def test_label_signal_noise_shot_noise_path_writes_label_column(tmp_path):
-    height, width = 12, 16
-    text_name = "events-labeled.txt"
+def test_label_signal_noise_text_rows_match_returned_events(tmp_path: Path) -> None:
+    """Labeled text output serializes every returned event exactly once."""
+    height_ = 12
+    width_ = 16
+    text_name_ = "events-labeled.txt"
 
-    emu = EventEmulator(
+    emulator_ = EventEmulator(
         pos_thres=0.2,
         neg_thres=0.2,
         sigma_thres=0.0,
@@ -189,27 +216,28 @@ def test_label_signal_noise_shot_noise_path_writes_label_column(tmp_path):
         refractory_period_s=0.0,
         seed=11,
         output_folder=str(tmp_path),
-        output_width=width,
-        output_height=height,
-        dvs_text=text_name,
+        output_width=width_,
+        output_height=height_,
+        dvs_text=text_name_,
         label_signal_noise=True,
         device="cpu",
     )
 
-    frame = np.full((height, width), 127, dtype=np.uint8)
-    emu.generate_events(frame, 0.0)
-    emu.generate_events(frame, 0.05)
-    emu.cleanup()
+    frame_ = np.full((height_, width_), 127, dtype=np.uint8)
+    emulator_.generate_events(frame_, 0.0)
+    events_ = emulator_.generate_events(frame_, 0.05)
+    emulator_.cleanup()
 
-    out_path = tmp_path / text_name
-    assert out_path.exists()
+    assert events_ is not None
+    output_path_ = tmp_path / text_name_
+    assert output_path_.exists()
 
-    data_lines = [
-        line.strip() for line in out_path.read_text().splitlines()
-        if line.strip() and not line.startswith("#")
+    data_lines_ = [
+        line_.strip() for line_ in output_path_.read_text().splitlines()
+        if line_.strip() and not line_.startswith("#")
     ]
-    assert len(data_lines) > 0
-    assert all(len(line.split()) == 5 for line in data_lines[:20])
+    assert len(data_lines_) == events_.shape[0]
+    assert all(len(line_.split()) == 5 for line_ in data_lines_)
 
 
 def test_moving_edge_generates_events_with_valid_packet():
@@ -279,6 +307,80 @@ def test_moving_blob_generates_on_and_off_events():
     # Blob translation should create ON events on the leading edge and OFF on trailing edge.
     pol = set(np.unique(events[:, 3]))
     assert pol == {-1.0, 1.0}
+
+
+def test_event_output_adapters_append_each_packet_once(tmp_path: Path,
+                                                       monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each enabled adapter receives one call for one returned event packet."""
+    monkeypatch.setattr(emulator_module, "AEDat2Output", _OutputSpy)
+    monkeypatch.setattr(emulator_module, "AEDat4Output", _OutputSpy)
+    monkeypatch.setattr(emulator_module, "DVSTextOutput", _OutputSpy)
+
+    emulator_ = EventEmulator(
+        pos_thres=0.08,
+        neg_thres=0.08,
+        sigma_thres=0.0,
+        cutoff_hz=0.0,
+        leak_rate_hz=0.0,
+        shot_noise_rate_hz=0.0,
+        photoreceptor_noise=False,
+        refractory_period_s=0.0,
+        seed=18,
+        output_folder=str(tmp_path),
+        output_width=8,
+        output_height=8,
+        dvs_aedat2="events.aedat",
+        dvs_aedat4="events.aedat4",
+        dvs_text="events.txt",
+        label_signal_noise=True,
+        device="cpu",
+    )
+
+    dark_frame_ = np.zeros((8, 8), dtype=np.uint8)
+    bright_frame_ = np.full((8, 8), 255, dtype=np.uint8)
+    emulator_.generate_events(dark_frame_, 0.0)
+    events_ = emulator_.generate_events(bright_frame_, 1.0 / 30.0)
+
+    assert events_ is not None
+    assert emulator_.dvs_aedat2.append_count == 1
+    assert emulator_.dvs_aedat4.append_count == 1
+    assert emulator_.dvs_text.append_count == 1
+    emulator_.cleanup()
+
+
+def test_cleanup_releases_each_output_resource_once(tmp_path: Path,
+                                                    monkeypatch: pytest.MonkeyPatch) -> None:
+    """Repeated cleanup does not close or release output resources twice."""
+    monkeypatch.setattr(emulator_module, "AEDat2Output", _OutputSpy)
+    monkeypatch.setattr(emulator_module, "AEDat4Output", _OutputSpy)
+    monkeypatch.setattr(emulator_module, "DVSTextOutput", _OutputSpy)
+
+    emulator_ = EventEmulator(
+        output_folder=str(tmp_path),
+        output_width=8,
+        output_height=8,
+        dvs_aedat2="events.aedat",
+        dvs_aedat4="events.aedat4",
+        dvs_text="events.txt",
+        device="cpu",
+    )
+    aedat2_spy_ = emulator_.dvs_aedat2
+    aedat4_spy_ = emulator_.dvs_aedat4
+    text_spy_ = emulator_.dvs_text
+    video_spy_ = _VideoWriterSpy()
+    emulator_.video_writers["state"] = video_spy_
+
+    emulator_.cleanup()
+    emulator_.cleanup()
+
+    assert aedat2_spy_.close_count == 1
+    assert aedat4_spy_.close_count == 1
+    assert text_spy_.close_count == 1
+    assert video_spy_.release_count == 1
+    assert emulator_.dvs_aedat2 is None
+    assert emulator_.dvs_aedat4 is None
+    assert emulator_.dvs_text is None
+    assert emulator_.video_writers == {}
 
 
 def test_h5_writer_buffers_and_preserves_rows_on_cleanup(tmp_path: Path) -> None:
