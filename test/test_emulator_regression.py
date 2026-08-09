@@ -1,3 +1,5 @@
+import random
+
 import numpy as np
 import pytest
 
@@ -740,3 +742,245 @@ def test_hist_noise_event_generation_is_capped_and_reschedules_dropped_due_event
     assert float(emu.iebcs_noise_next_pos_s[0, 0]) > 0.1
     assert float(emu.iebcs_noise_next_neg_s[0, 0]) > 0.1
     assert any("capped" in rec.getMessage() for rec in caplog.records)
+
+
+def test_reset_replays_a_seeded_sequence_from_time_zero() -> None:
+    height_, width_ = 8, 10
+    frame_0_ = np.zeros((height_, width_), dtype=np.uint8)
+    frame_1_ = np.full((height_, width_), 220, dtype=np.uint8)
+    emulator_kwargs_ = {
+        "pos_thres": 0.08,
+        "neg_thres": 0.08,
+        "sigma_thres": 0.02,
+        "cutoff_hz": 0.0,
+        "leak_rate_hz": 0.1,
+        "shot_noise_rate_hz": 0.0,
+        "refractory_period_s": 0.0,
+        "v2ce_nonuniform_burst_timestamps": True,
+        "seed": 73,
+        "output_width": width_,
+        "output_height": height_,
+        "device": "cpu",
+    }
+
+    reused_emulator_ = EventEmulator(**emulator_kwargs_)
+    fresh_emulator_ = EventEmulator(**emulator_kwargs_)
+    try:
+        reused_emulator_.generate_events(frame_0_, 0.0)
+        first_events_ = reused_emulator_.generate_events(frame_1_, 0.02)
+        first_thresholds_ = reused_emulator_.pos_thres.clone()
+
+        reused_emulator_.reset()
+        assert reused_emulator_.t_previous == 0.0
+        assert reused_emulator_.pos_thres == reused_emulator_.pos_thres_nominal
+
+        reused_emulator_.generate_events(frame_0_, 0.0)
+        replayed_events_ = reused_emulator_.generate_events(frame_1_, 0.02)
+        replayed_thresholds_ = reused_emulator_.pos_thres.clone()
+
+        fresh_emulator_.generate_events(frame_0_, 0.0)
+        fresh_events_ = fresh_emulator_.generate_events(frame_1_, 0.02)
+        fresh_thresholds_ = fresh_emulator_.pos_thres.clone()
+    finally:
+        reused_emulator_.cleanup()
+        fresh_emulator_.cleanup()
+
+    assert first_events_ is not None
+    assert replayed_events_ is not None
+    assert fresh_events_ is not None
+    assert np.array_equal(first_events_, replayed_events_)
+    assert np.array_equal(replayed_events_, fresh_events_)
+    assert torch.equal(first_thresholds_, replayed_thresholds_)
+    assert torch.equal(replayed_thresholds_, fresh_thresholds_)
+
+
+def test_set_dvs_params_rejects_an_initialized_emulator() -> None:
+    emulator_ = EventEmulator(
+        output_width=4,
+        output_height=4,
+        device="cpu",
+    )
+    try:
+        emulator_.generate_events(np.zeros((4, 4), dtype=np.uint8), 0.0)
+
+        with pytest.raises(RuntimeError, match="reset.*before changing"):
+            emulator_.set_dvs_params("noisy")
+    finally:
+        emulator_.cleanup()
+
+
+def test_set_dvs_params_rebuilds_nominal_and_pixel_threshold_state() -> None:
+    frame_ = np.full((6, 6), 80, dtype=np.uint8)
+    emulator_ = EventEmulator(
+        pos_thres=0.35,
+        neg_thres=0.4,
+        sigma_thres=0.01,
+        leak_rate_hz=0.0,
+        output_width=6,
+        output_height=6,
+        device="cpu",
+        seed=19,
+    )
+    try:
+        emulator_.set_dvs_params("clean")
+        emulator_.generate_events(frame_, 0.0)
+
+        assert emulator_.pos_thres_nominal == pytest.approx(0.2)
+        assert emulator_.neg_thres_nominal == pytest.approx(0.2)
+        assert isinstance(emulator_.pos_thres, torch.Tensor)
+        assert isinstance(emulator_.neg_thres, torch.Tensor)
+        assert torch.allclose(
+            emulator_.pos_thres_pre_prob,
+            emulator_.pos_thres_nominal / emulator_.pos_thres,
+        )
+        assert torch.allclose(
+            emulator_.neg_thres_pre_prob,
+            emulator_.neg_thres_nominal / emulator_.neg_thres,
+        )
+
+        emulator_.reset()
+        emulator_.set_dvs_params("noisy")
+        emulator_.generate_events(frame_, 0.0)
+        assert emulator_.noise_rate_array is not None
+        assert isinstance(emulator_.pos_thres, torch.Tensor)
+        assert torch.allclose(
+            emulator_.pos_thres_pre_prob,
+            emulator_.pos_thres_nominal / emulator_.pos_thres,
+        )
+    finally:
+        emulator_.cleanup()
+
+
+def _Numpy_rng_states_equal(first_: tuple[object, ...], second_: tuple[object, ...]) -> bool:
+    """Return true when two legacy NumPy RNG state tuples are identical."""
+
+    return (
+        first_[0] == second_[0]
+        and np.array_equal(first_[1], second_[1])
+        and first_[2:] == second_[2:]
+    )
+
+
+def _Run_private_rng_pair(reverse_order_: bool,
+                          include_second_: bool = True) -> dict[str, np.ndarray]:
+    """Run one or two stochastic emulators with optionally reversed order."""
+
+    height_, width_ = 10, 12
+    common_ = {
+        "pos_thres": 0.12,
+        "neg_thres": 0.12,
+        "sigma_thres": 0.02,
+        "cutoff_hz": 8.0,
+        "leak_rate_hz": 0.2,
+        "shot_noise_rate_hz": 4.0,
+        "refractory_period_s": 0.0,
+        "iebcs_latency_jitter_model": True,
+        "iebcs_resample_thresholds_on_event": True,
+        "v2ce_nonuniform_burst_timestamps": True,
+        "output_width": width_,
+        "output_height": height_,
+        "device": "cpu",
+    }
+    emulators_ = {
+        "a": EventEmulator(seed=101, **common_),
+    }
+    if include_second_:
+        emulators_["b"] = EventEmulator(seed=202, **common_)
+    frames_ = tuple(
+        np.roll(
+            np.linspace(10, 245, width_, dtype=np.uint8)[None, :].repeat(height_, axis=0),
+            frame_index_,
+            axis=1,
+        )
+        for frame_index_ in range(5)
+    )
+    chunks_: dict[str, list[np.ndarray]] = {name_: [] for name_ in emulators_}
+    names_ = tuple(reversed(tuple(emulators_))) if reverse_order_ else tuple(emulators_)
+    try:
+        for frame_index_, frame_ in enumerate(frames_):
+            for name_ in names_:
+                events_ = emulators_[name_].generate_events(frame_, frame_index_ / 50.0)
+                if events_ is not None and events_.size:
+                    chunks_[name_].append(events_.copy())
+    finally:
+        for emulator_ in emulators_.values():
+            emulator_.cleanup()
+
+    return {
+        name_: np.concatenate(stream_chunks_, axis=0) if stream_chunks_ else np.empty((0, 4), dtype=np.float32)
+        for name_, stream_chunks_ in chunks_.items()
+    }
+
+
+def test_seeded_emulator_does_not_mutate_ambient_random_states() -> None:
+    random.seed(9001)
+    np.random.seed(9002)
+    torch.manual_seed(9003)
+    python_state_ = random.getstate()
+    numpy_state_ = np.random.get_state()
+    torch_state_ = torch.random.get_rng_state().clone()
+    cuda_states_ = tuple(state_.clone() for state_ in torch.cuda.get_rng_state_all()) if torch.cuda.is_available() else ()
+
+    emulator_ = EventEmulator(
+        seed=77,
+        sigma_thres=0.03,
+        leak_rate_hz=0.2,
+        shot_noise_rate_hz=3.0,
+        output_width=8,
+        output_height=8,
+        device="cpu",
+    )
+    try:
+        emulator_.generate_events(np.zeros((8, 8), dtype=np.uint8), 0.0)
+        emulator_.generate_events(np.full((8, 8), 180, dtype=np.uint8), 0.02)
+    finally:
+        emulator_.cleanup()
+
+    assert random.getstate() == python_state_
+    assert _Numpy_rng_states_equal(np.random.get_state(), numpy_state_)
+    assert torch.equal(torch.random.get_rng_state(), torch_state_)
+    if cuda_states_:
+        assert all(
+            torch.equal(current_, expected_)
+            for current_, expected_ in zip(torch.cuda.get_rng_state_all(), cuda_states_, strict=True)
+        )
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required for device-generator isolation")
+def test_seeded_cuda_emulator_does_not_mutate_ambient_cuda_random_state() -> None:
+    cuda_states_ = tuple(state_.clone() for state_ in torch.cuda.get_rng_state_all())
+    emulator_ = EventEmulator(
+        seed=88,
+        sigma_thres=0.03,
+        leak_rate_hz=0.2,
+        shot_noise_rate_hz=3.0,
+        output_width=4,
+        output_height=4,
+        device="cuda:0",
+    )
+    try:
+        emulator_.generate_events(np.zeros((4, 4), dtype=np.uint8), 0.0)
+        emulator_.generate_events(np.full((4, 4), 180, dtype=np.uint8), 0.02)
+        torch.cuda.synchronize(0)
+    finally:
+        emulator_.cleanup()
+
+    assert all(
+        torch.equal(current_, expected_)
+        for current_, expected_ in zip(torch.cuda.get_rng_state_all(), cuda_states_, strict=True)
+    )
+
+
+def test_per_instance_generators_make_streams_independent_of_processing_order() -> None:
+    forward_ = _Run_private_rng_pair(reverse_order_=False)
+    reversed_ = _Run_private_rng_pair(reverse_order_=True)
+
+    assert np.array_equal(forward_["a"], reversed_["a"])
+    assert np.array_equal(forward_["b"], reversed_["b"])
+
+
+def test_seeded_stream_matches_when_run_alone_or_with_another_emulator() -> None:
+    alone_ = _Run_private_rng_pair(reverse_order_=False, include_second_=False)
+    together_ = _Run_private_rng_pair(reverse_order_=False, include_second_=True)
+
+    assert np.array_equal(alone_["a"], together_["a"])

@@ -14,7 +14,7 @@ Conventions and severity definitions: [`README.md`](README.md).
 **`reset()` then reuse raises `TypeError`**
 
 - **Severity:** Critical
-- **Status:** Confirmed (probe)
+- **Status:** Resolved (functional test)
 - **Where:** `v2ecore/emulator.py`, `reset()` and `_init()`, anchor
   `KEY[C-THRESH-MISMATCH]`
 
@@ -55,11 +55,11 @@ generate_events(...) -> RAISED TypeError:
     normal(): argument 'mean' (position 1) must be float, not Tensor
 ```
 
-### Suggested fix
+### Resolution
 
-`reset()` must restore every attribute `_init()` consumes back to its
-constructor value. Concretely, keep the nominal scalars as the single source of
-truth and rebuild from them:
+`reset()` now restores every attribute `_init()` consumes from nominal
+configuration, and `_init()` samples active thresholds explicitly from
+`*_nominal` rather than from its previous derived tensors:
 
 ```python
 def reset(self):
@@ -72,10 +72,9 @@ def reset(self):
     self.neg_thres_pre_prob = None
 ```
 
-The durable version of this fix is to stop letting `_init()` read and write the
-same attribute: have it derive `self.pos_thres` from `self.pos_thres_nominal`
-explicitly, so re-entry is idempotent regardless of what `reset()` clears. Add
-a regression that runs a sequence, calls `reset()`, and runs a second sequence.
+The regression runs a complete sequence, resets the emulator, and reruns it
+from `t = 0` with the same fixed seed. Reused and fresh emulators produce
+identical thresholds and event rows.
 
 ---
 
@@ -84,7 +83,7 @@ a regression that runs a sequence, calls `reset()`, and runs a second sequence.
 **`reset()` does not rewind `t_previous`**
 
 - **Severity:** High
-- **Status:** Confirmed (probe)
+- **Status:** Resolved (functional test)
 - **Where:** `v2ecore/emulator.py`, `reset()`
 
 ### Issue
@@ -114,9 +113,10 @@ generate_events(frame, 0.0) -> RAISED ValueError:
     this frame time=0.0 must be later than previous frame time=0.01
 ```
 
-### Suggested fix
+### Resolution
 
-Reset the time origin together with the rest of the state:
+`reset()` now rewinds the time origin together with the rest of the sequence
+state:
 
 ```python
 def reset(self):
@@ -124,11 +124,9 @@ def reset(self):
     self.t_previous = 0.0
 ```
 
-If some caller genuinely needs a continuous clock across a reset, make that an
-explicit argument (`reset(keep_time=False)`) rather than an accident of which
-attributes the method forgot. Whichever is chosen, state the time-base contract
-in the `reset()` docstring, because [IEBCS-001](iebcs_extensions.md#iebcs-001)
-shows the repository already has one unresolved time-origin assumption.
+There is no `keep_time` compatibility option. The method starts a new sequence,
+and its docstring states that contract. Active HDF5 recording remains outside
+that contract pending [LIFE-005](#life-005).
 
 ---
 
@@ -137,7 +135,7 @@ shows the repository already has one unresolved time-origin assumption.
 **`set_dvs_params()` mid-stream raises `AttributeError`**
 
 - **Severity:** Critical
-- **Status:** Confirmed (probe)
+- **Status:** Resolved (functional test)
 - **Where:** `v2ecore/emulator.py`, `set_dvs_params()` and `_init()`, anchor
   `KEY[F-LEAK-FPN]`
 
@@ -167,24 +165,20 @@ generate_events(...) -> RAISED AttributeError:
     'EventEmulator' object has no attribute 'noise_rate_array'
 ```
 
-### Suggested fix
+### Resolution
 
-Make `set_dvs_params()` invalidate everything it invalidates, by routing
-through the same reinitialisation path rather than assigning attributes
-piecemeal:
+`set_dvs_params()` now rejects a valid preset after frame processing has
+initialized derived state. The caller must reset first; before initialization
+or after reset, the preset updates nominal configuration and the low-pass
+filter without leaving stale per-pixel arrays:
 
 ```python
-def set_dvs_params(self, model):
-    ...                      # assign the preset scalars
-    self.low_pass_filter = LowPassFilter(cutoff_hz=self.cutoff_hz)
-    self.reset()             # forces _init() on the next frame
+if self.frame_counter > 0 or self.base_log_frame is not None:
+    raise RuntimeError("reset the emulator before changing DVS parameters")
 ```
 
-That requires [LIFE-001](#life-001) and [LIFE-002](#life-002) to be fixed first,
-otherwise it trades one crash for another — which is the argument for treating
-these three as a single change. Also declare in the docstring whether calling
-`set_dvs_params()` after streaming has begun is supported at all; rejecting it
-outright is a defensible alternative and is simpler to guarantee.
+The regression verifies the rejection at the call that violates the lifecycle,
+rather than allowing a later leak-model `AttributeError`.
 
 ---
 
@@ -193,7 +187,7 @@ outright is a defensible alternative and is simpler to guarantee.
 **`set_dvs_params()` discards per-pixel threshold mismatch**
 
 - **Severity:** High
-- **Status:** Confirmed (probe)
+- **Status:** Resolved (functional test)
 - **Where:** `v2ecore/emulator.py`, `set_dvs_params()`
 
 ### Issue
@@ -232,23 +226,23 @@ per-pixel mismatch lost? True
 `_refresh_threshold_probability_scales()` is confirmed absent from
 `set_dvs_params()` by inspection.
 
-### Suggested fix
+### Resolution
 
-Treat the preset as setting *nominal* parameters, then rebuild the derived
-per-pixel state from them:
+Presets now set nominal thresholds first. `_init()` subsequently samples the
+per-pixel state and refreshes the shot-noise probability scales from those
+nominals:
 
 ```python
 self.pos_thres_nominal = 0.2
 self.neg_thres_nominal = 0.2
 self.sigma_thres = 0.05
 ...
-self.reset()          # per-pixel thresholds and pre_prob rebuilt in _init()
+self.pos_thres = self.pos_thres_nominal  # placeholder until _init()
 ```
 
-This subsumes [LIFE-003](#life-003) and removes the nominal-drift half of the
-problem in the same change. Add a test asserting that after a preset switch the
-thresholds are still a tensor with the preset's `sigma_thres`, and that
-`pos_thres_pre_prob` is consistent with `nominal / actual`.
+The functional regression starts from non-preset nominal values, selects both
+presets across a reset, and verifies per-pixel threshold tensors, leak-state
+creation, and `nominal / actual` probability scales.
 
 ---
 

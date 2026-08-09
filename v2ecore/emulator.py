@@ -1,8 +1,9 @@
+"""Generate event-camera streams from ordered intensity frames.
+
+EventEmulator owns sensor-model configuration, per-sequence derived state,
+and private random generators. Output adapters own serialization; reset()
+starts a new writer-free sequence without changing configured output objects.
 """
-DVS simulator.
-Compute events from input frames.
-"""
-from collections import deque
 from collections.abc import Sequence
 import matplotlib
 import matplotlib.pyplot as plt
@@ -12,12 +13,10 @@ import logging
 import math
 import os
 import pickle
-import random
 
 import cv2
 import h5py
 import numpy as np
-import torch
 import torch
 from screeninfo import get_monitors
 
@@ -43,6 +42,11 @@ class EventEmulator(object):
     This class simulates a Dynamic Vision Sensor (DVS) by generating events 
     from input frames. It models various aspects of DVS behavior, including 
     temporal contrast thresholds, noise, and refractory periods.
+
+    A fixed seed is local to one emulator. Calling reset() rewinds model time,
+    derived pixel state, and those private random generators so replaying a
+    sequence is equivalent to using a fresh emulator with the same seed. Named
+    DVS presets may be changed only before sequence initialization.
 
     Attributes:
         l255 (float): Logarithm of 255 for intensity scaling.
@@ -229,8 +233,9 @@ class EventEmulator(object):
         photoreceptor_noise: bool
             model photoreceptor noise to create the desired shot noise rate
         seed: int, default=0
-            seed for random threshold variations,
-            fix it to nonzero value to get same mismatch every time
+            Seed for all stochastic sensor effects owned by this emulator.
+            A nonzero value enables exact replay after reset() without changing
+            process-global random state.
         dvs_aedat2, dvs_aedat4, dvs_h5, dvs_text: str
             names of output data files or None
         aedat4_camera_name: str | None
@@ -268,14 +273,27 @@ class EventEmulator(object):
             "ON/OFF log_e temporal contrast thresholds: "
             "{} / {} +/- {}".format(pos_thres, neg_thres, sigma_thres))
 
-        self.reset()
-        self.t_previous = 0  # time of previous frame
-
         # list of frame types to not show and not print warnings for except for once
         self.dont_show_list = []
         self.show_list = []  # list of named windows shown for internal states
         # torch device
         self.device = device
+        self._cpu_generator = torch.Generator(device="cpu")
+        self._device_generator = (
+            self._cpu_generator
+            if torch.device(self.device).type == "cpu"
+            else torch.Generator(device=self.device)
+        )
+        self._rng_seed = int(seed)
+        if self._rng_seed != 0:
+            self._cpu_generator.manual_seed(self._rng_seed)
+        else:
+            self._rng_seed = int(self._cpu_generator.seed())
+        if self._device_generator is not self._cpu_generator:
+            self._device_generator.manual_seed(self._rng_seed)
+        self._cpu_generator_initial_state = self._cpu_generator.get_state().clone()
+        self._device_generator_initial_state = \
+            self._device_generator.get_state().clone()
 
         # Thresholds
         self.sigma_thres = sigma_thres
@@ -311,9 +329,10 @@ class EventEmulator(object):
         self.iebcs_refractory_state_coupling = bool(
             iebcs_refractory_state_coupling)
         
+        self._iebcs_refractory_is_explicit = iebcs_refractory_us is not None
         self.iebcs_refractory_s = \
             float(iebcs_refractory_us) * 1e-6 \
-            if iebcs_refractory_us is not None \
+            if self._iebcs_refractory_is_explicit \
             else self.refractory_period_s
         
         self.iebcs_refractory_release_ts: torch.Tensor | None = None
@@ -345,9 +364,8 @@ class EventEmulator(object):
         self.shot_noise_rate_hz = shot_noise_rate_hz
         self.photoreceptor_noise = photoreceptor_noise
         self.photoreceptor_noise_vrms: float | None = None
-        estimator_seed: int | None = seed if seed != 0 else None
         self.photoreceptor_noise_estimator = PhotoreceptorNoiseVoltageEstimator(
-            seed=estimator_seed)
+            seed=self._rng_seed)
         # separate noise source that is lowpass filtered to provide intensity-independent noise to add to intensity-dependent filtered photoreceptor output
         self.photoreceptor_noise_arr: np.ndarray | None = None
         if photoreceptor_noise:
@@ -375,12 +393,6 @@ class EventEmulator(object):
         self.save_dvs_model_state = save_dvs_model_state
         # list of avi file writers for saving model state videos
         self.video_writers: dict[str, video_writer] = {}
-
-        # generate jax key for random process
-        if seed != 0:
-            torch.manual_seed(seed)
-            np.random.seed(seed)
-            random.seed(seed)
 
         # h5 output
         self.output_folder = output_folder
@@ -476,6 +488,10 @@ class EventEmulator(object):
         if self.scidvs:
             v2e_logger.info(
                 'Modeling potential SCIDVS pixel with nonlinear CR highpass amplified log intensity')
+
+        # Initialize sequence-owned state only after all configuration and RNG
+        # sources exist, but before any output writer is opened.
+        self.reset()
 
         try:
             if dvs_h5:
@@ -641,22 +657,27 @@ class EventEmulator(object):
         # base_frame are memorized Map_linear_to_log_luminance pixel values
         self.diff_frame = None
 
-        # KEY[C-THRESH-MISMATCH]: Sec. 4(C) threshold mismatch.
-        # Pixel-wise ON/OFF thresholds are sampled around nominal values.
-        # take the variance of threshold into account.
+        # KEY[C-THRESH-MISMATCH]: always derive active thresholds from nominal
+        # configuration so initialization remains idempotent after reset.
+        self.pos_thres = self.pos_thres_nominal
+        self.neg_thres = self.neg_thres_nominal
         if self.sigma_thres > 0:
             self.pos_thres = torch.normal(
-                self.pos_thres, self.sigma_thres,
+                self.pos_thres_nominal, self.sigma_thres,
                 size=first_frame_linear.shape,
-                dtype=torch.float32).to(self.device)
+                dtype=torch.float32,
+                device=self.device,
+                generator=self._device_generator)
 
             # to avoid the situation where the threshold is too small.
             self.pos_thres = torch.clamp(self.pos_thres, min=0.01)
 
             self.neg_thres = torch.normal(
-                self.neg_thres, self.sigma_thres,
+                self.neg_thres_nominal, self.sigma_thres,
                 size=first_frame_linear.shape,
-                dtype=torch.float32).to(self.device)
+                dtype=torch.float32,
+                device=self.device,
+                generator=self._device_generator)
             self.neg_thres = torch.clamp(self.neg_thres, min=0.01)
 
         # KEY[G-THRESH-PROB-SCALE]: scale temporal-noise probability by
@@ -666,8 +687,13 @@ class EventEmulator(object):
 
         if self.scidvs and EventEmulator.SCIDVS_TAU_COV > 0:
             self.scidvs_tau_arr = EventEmulator.SCIDVS_TAU_S * (
-                torch.exp(torch.normal(0, EventEmulator.SCIDVS_TAU_COV, size=first_frame_linear.shape,
-                                       dtype=torch.float32).to(self.device)))
+                torch.exp(torch.normal(
+                    0,
+                    EventEmulator.SCIDVS_TAU_COV,
+                    size=first_frame_linear.shape,
+                    dtype=torch.float32,
+                    device=self.device,
+                    generator=self._device_generator)))
 
         # If leak is non-zero, then initialize each pixel memorized value
         # some fraction of ON threshold below first frame value, to create leak
@@ -689,7 +715,7 @@ class EventEmulator(object):
             # set noise rate array, it's a log-normal distribution
             self.noise_rate_array = torch.randn(
                 first_frame_linear.shape, dtype=torch.float32,
-                device=self.device)
+                device=self.device, generator=self._device_generator)
             self.noise_rate_array = torch.exp(
                 math.log(10) * self.noise_rate_cov_decades * self.noise_rate_array)
 
@@ -705,10 +731,29 @@ class EventEmulator(object):
         if self.iebcs_hist_noise_model:
             self._init_iebcs_noise_schedule(first_frame_linear.shape)
 
-    def set_dvs_params(self, model: str):
+    def set_dvs_params(self, model: str) -> None:
+        """Apply a named sensor preset before sequence initialization.
+
+        Args:
+            model: ``"clean"`` or ``"noisy"``.
+
+        Raises:
+            RuntimeError: If frame processing has already initialized derived
+                per-pixel state. Call :meth:`reset` before changing presets.
+        """
+        if model not in ("clean", "noisy"):
+            v2e_logger.warning(
+                "dvs_params {} not known: "
+                "Using commandline assigned options".format(model))
+            return
+
+        if self.frame_counter > 0 or self.base_log_frame is not None:
+            raise RuntimeError(
+                "reset the emulator before changing DVS parameters")
+
         if model == 'clean':
-            self.pos_thres = 0.2
-            self.neg_thres = 0.2
+            self.pos_thres_nominal = 0.2
+            self.neg_thres_nominal = 0.2
             self.sigma_thres = 0.02
             self.cutoff_hz = 0
             self.leak_rate_hz = 0
@@ -718,8 +763,8 @@ class EventEmulator(object):
             self.refractory_period_s = 0
 
         elif model == 'noisy':
-            self.pos_thres = 0.2
-            self.neg_thres = 0.2
+            self.pos_thres_nominal = 0.2
+            self.neg_thres_nominal = 0.2
             self.sigma_thres = 0.05
             self.cutoff_hz = 30
             self.leak_rate_hz = 0.1
@@ -728,14 +773,14 @@ class EventEmulator(object):
             self.refractory_period_s = 0
             self.leak_jitter_fraction = 0.1
             self.noise_rate_cov_decades = 0.1
-        else:
-            #  logger.error(
-            #      "dvs_params {} not known: "
-            #      "use 'clean' or 'noisy'".format(model))
-            v2e_logger.warning(
-                "dvs_params {} not known: "
-                "Using commandline assigned options".format(model))
-            #  sys.exit(1)
+        # Active scalar thresholds are placeholders until `_init()` samples
+        # per-pixel mismatch from the updated nominal configuration.
+        self.pos_thres = self.pos_thres_nominal
+        self.neg_thres = self.neg_thres_nominal
+        self.pos_thres_pre_prob = None
+        self.neg_thres_pre_prob = None
+        if not self._iebcs_refractory_is_explicit:
+            self.iebcs_refractory_s = self.refractory_period_s
         v2e_logger.info("set DVS model params with option '{}' "
                         "to following values:\n"
                         "pos_thres={}\n"
@@ -753,11 +798,27 @@ class EventEmulator(object):
             cutoff_hz=self.cutoff_hz,
             strict_model_validity=self.strict_model_validity)
 
-    def reset(self):
-        """Reset state so the next frame reinitializes the internal model."""
+    def reset(self) -> None:
+        """Start a new writer-free sequence from time zero.
+
+        Derived per-pixel state and private random generators are restored to
+        their construction-time state. Output writers and their datasets are
+        intentionally left untouched; reset during active recording remains an
+        unsupported boundary pending an explicit writer contract.
+        """
         self.num_events_total = 0
         self.num_events_on = 0
         self.num_events_off = 0
+        self.no_events_warning_count = 0
+
+        # Restore configuration-backed values before `_init()` samples new
+        # per-pixel state for the next sequence.
+        self.pos_thres = self.pos_thres_nominal
+        self.neg_thres = self.neg_thres_nominal
+        self.pos_thres_pre_prob = None
+        self.neg_thres_pre_prob = None
+        self.noise_rate_array = None
+        self.timestamp_mem = None
 
         # Internal model states that can be visualized/saved with --show_dvs_model_state.
         self.new_frame: np.ndarray | None = None
@@ -771,11 +832,26 @@ class EventEmulator(object):
         self.scidvs_highpass: np.ndarray | None = None
         self.scidvs_previous_photo: np.ndarray | None = None
         self.scidvs_tau_arr: np.ndarray | None = None
+        self.photoreceptor_noise_arr = None
+        self.photoreceptor_noise_vrms = None
         self.iebcs_refractory_release_ts = None
+        self.iebcs_noise_idx_pos = None
+        self.iebcs_noise_idx_neg = None
         self.iebcs_noise_next_pos_s = None
         self.iebcs_noise_next_neg_s = None
 
         self.frame_counter = 0
+        self.t_previous = 0.0
+
+        # A reset sequence must replay exactly like a fresh emulator with the
+        # same seed, independent of prior stochastic model activity.
+        self._cpu_generator.set_state(
+            self._cpu_generator_initial_state.clone())
+        if self._device_generator is not self._cpu_generator:
+            self._device_generator.set_state(
+                self._device_generator_initial_state.clone())
+        self.photoreceptor_noise_estimator = \
+            PhotoreceptorNoiseVoltageEstimator(seed=self._rng_seed)
 
     @staticmethod
     def _iebcs_frequency_bins_hz() -> np.ndarray:
@@ -841,7 +917,9 @@ class EventEmulator(object):
         assert cdf_all is not None
         assert self.iebcs_noise_bins_hz is not None
         cdf = cdf_all[row_indices]
-        u = torch.rand((row_indices.numel(), 1), dtype=torch.float32, device=self.device)
+        u = torch.rand(
+            (row_indices.numel(), 1), dtype=torch.float32,
+            device=self.device, generator=self._device_generator)
         bin_idx = torch.argmax((cdf >= u).to(torch.int64), dim=1)
         freq_hz = self.iebcs_noise_bins_hz[bin_idx]
         freq_hz = torch.clamp(freq_hz, min=1e-6)
@@ -857,15 +935,21 @@ class EventEmulator(object):
         n_pos = self.iebcs_noise_cdf_pos.shape[0]
         n_neg = self.iebcs_noise_cdf_neg.shape[0]
         self.iebcs_noise_idx_pos = torch.randint(
-            low=0, high=n_pos, size=shape, dtype=torch.int64, device=self.device)
+            low=0, high=n_pos, size=shape, dtype=torch.int64,
+            device=self.device, generator=self._device_generator)
         self.iebcs_noise_idx_neg = torch.randint(
-            low=0, high=n_neg, size=shape, dtype=torch.int64, device=self.device)
+            low=0, high=n_neg, size=shape, dtype=torch.int64,
+            device=self.device, generator=self._device_generator)
         flat_pos_idx = self.iebcs_noise_idx_pos.reshape(-1)
         flat_neg_idx = self.iebcs_noise_idx_neg.reshape(-1)
         pos_delay = self._sample_iebcs_noise_delay_s(flat_pos_idx, polarity=1)
         neg_delay = self._sample_iebcs_noise_delay_s(flat_neg_idx, polarity=-1)
-        pos_phase = torch.rand((num_pixels,), dtype=torch.float32, device=self.device)
-        neg_phase = torch.rand((num_pixels,), dtype=torch.float32, device=self.device)
+        pos_phase = torch.rand(
+            (num_pixels,), dtype=torch.float32, device=self.device,
+            generator=self._device_generator)
+        neg_phase = torch.rand(
+            (num_pixels,), dtype=torch.float32, device=self.device,
+            generator=self._device_generator)
         self.iebcs_noise_next_pos_s = (pos_delay * pos_phase).reshape(shape)
         self.iebcs_noise_next_neg_s = (neg_delay * neg_phase).reshape(shape)
 
@@ -1076,7 +1160,8 @@ class EventEmulator(object):
                 jitter_std = jitter_std * torch.sqrt(1.0 + amp * amp)
             lat = lat + torch.normal(
                 mean=torch.zeros_like(jitter_std),
-                std=jitter_std)
+                std=jitter_std,
+                generator=self._device_generator)
         lat = torch.clamp(lat, min=0.0, max=self.iebcs_latency_clamp_s)
         return (base_ts + lat).to(dtype=ts_dtype, device=self.device)
 
@@ -1121,7 +1206,8 @@ class EventEmulator(object):
             return ts, ts_step
 
         raw = torch.rand((min_ts_steps,), dtype=torch.float32,
-                         device=self.device)
+                         device=self.device,
+                         generator=self._device_generator)
         if self.v2ce_burst_timestamps_mode == "slope":
             # Simple end-biased mapping for V2CE-like "slope" timing.
             raw = torch.sqrt(raw)
@@ -1154,7 +1240,8 @@ class EventEmulator(object):
                 std=self.sigma_thres,
                 size=(num_pos,),
                 dtype=torch.float32,
-                device=self.device)
+                device=self.device,
+                generator=self._device_generator)
             self.pos_thres[pos_mask] = torch.clamp(pos_samples, min=0.01)
 
         neg_mask = final_neg_evts_frame > 0
@@ -1165,7 +1252,8 @@ class EventEmulator(object):
                 std=self.sigma_thres,
                 size=(num_neg,),
                 dtype=torch.float32,
-                device=self.device)
+                device=self.device,
+                generator=self._device_generator)
             self.neg_thres[neg_mask] = torch.clamp(neg_samples, min=0.01)
 
         if num_pos > 0 or num_neg > 0:
@@ -1189,7 +1277,8 @@ class EventEmulator(object):
                 std=self.iebcs_latency_jitter_s,
                 size=(events.shape[0],),
                 dtype=torch.float32,
-                device=self.device)
+                device=self.device,
+                generator=self._device_generator)
             offsets = torch.clamp(offsets, min=0.0)
             events[:, 0] += offsets
 
@@ -1354,7 +1443,8 @@ class EventEmulator(object):
                 shot_noise_rate_hz=self.shot_noise_rate_hz, f3db=self.cutoff_hz, sample_rate_hz=1 / delta_time,
                 pos_thr=self.pos_thres_nominal, neg_thr=self.neg_thres_nominal, sigma_thr=self.sigma_thres)
             noise = self.photoreceptor_noise_vrms * torch.randn(self.log_new_frame.shape, dtype=torch.float32,
-                                                                device=self.device)
+                                                                device=self.device,
+                                                                generator=self._device_generator)
             self.photoreceptor_noise_arr = self.low_pass_filter(
                 log_new_frame=noise,
                 lp_log_frame=self.photoreceptor_noise_arr,
@@ -1399,7 +1489,6 @@ class EventEmulator(object):
         # R_l*Theta_on=dI/dt, so
         # dI=R_l*Theta_on*dt
         # KEY[F-LEAK-CALL]: Sec. 4(F) leak term subtracts from memory state.
-        # KEY[F-LEAK-CALL]: Sec. 4(F) leak term subtracts from memory state.
         if self.leak_rate_hz > 0:
             self.base_log_frame = subtract_leak_current(
                 base_log_frame=self.base_log_frame,
@@ -1407,7 +1496,8 @@ class EventEmulator(object):
                 delta_time=delta_time,
                 pos_thres=self.pos_thres,
                 leak_jitter_fraction=self.leak_jitter_fraction,
-                noise_rate_array=self.noise_rate_array)
+                noise_rate_array=self.noise_rate_array,
+                generator=self._device_generator)
 
         # log intensity (brightness) change from memorized values is computed
         # from the difference between new input
@@ -1604,7 +1694,8 @@ class EventEmulator(object):
                 # shuffle and append to the events collectors
                 if events_curr_iter is not None:
                     idx = torch.randperm(
-                        events_curr_iter.shape[0], device=self.device)
+                        events_curr_iter.shape[0], device=self.device,
+                        generator=self._device_generator)
                     events_curr_iter = events_curr_iter[idx].view(
                         events_curr_iter.size())
                     signal_event_chunks.append(events_curr_iter)
@@ -1644,7 +1735,8 @@ class EventEmulator(object):
                 # Intensity scaled to [0,1] for rate modulation.
                 inten01=inten01,
                 pos_thres_pre_prob=self.pos_thres_pre_prob,
-                neg_thres_pre_prob=self.neg_thres_pre_prob)
+                neg_thres_pre_prob=self.neg_thres_pre_prob,
+                generator=self._device_generator)
 
             # noise_on_xy and noise_off_xy each are two 1-d tensors each with same length of the number of events
             #   Tensor 0 is list of y addresses (first dimension in pos_cord input)

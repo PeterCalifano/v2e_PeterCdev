@@ -275,17 +275,31 @@ def apply_low_pass_filter(log_new_frame: torch.Tensor,
         strict_model_validity=strict_model_validity)
 
 
-def subtract_leak_current(base_log_frame,
-                          leak_rate_hz,
-                          delta_time,
-                          pos_thres,
-                          leak_jitter_fraction,
-                          noise_rate_array):
-    """Subtract leak current from base log frame."""
+def subtract_leak_current(base_log_frame: torch.Tensor,
+                          leak_rate_hz: float,
+                          delta_time: float,
+                          pos_thres: float | torch.Tensor,
+                          leak_jitter_fraction: float,
+                          noise_rate_array: torch.Tensor,
+                          generator: torch.Generator | None = None) -> torch.Tensor:
+    """Subtract stochastic leak current from comparator memory.
+
+    Args:
+        base_log_frame: Current per-pixel comparator memory.
+        leak_rate_hz: Nominal leak-event rate per pixel.
+        delta_time: Elapsed frame interval in seconds.
+        pos_thres: Active ON threshold scalar or per-pixel tensor.
+        leak_jitter_fraction: Fractional sample-to-sample leak jitter.
+        noise_rate_array: Fixed per-pixel leak-rate multipliers.
+        generator: Optional caller-owned random generator.
+
+    Returns:
+        Updated comparator memory. The input tensor is not modified.
+    """
 
     rand = torch.randn(
         noise_rate_array.shape, dtype=torch.float32,
-        device=noise_rate_array.device)
+        device=noise_rate_array.device, generator=generator)
 
     # KEY[F-LEAK-RATE]: Sec. 4(F) leak model with per-pixel randomization.
     curr_leak_rate = \
@@ -567,23 +581,26 @@ def compute_photoreceptor_noise_voltage(shot_noise_rate_hz: float,
     )
 
 
-def generate_shot_noise(shot_noise_rate_hz,
-                        delta_time,
-                        shot_noise_inten_factor,
-                        inten01,
-                        pos_thres_pre_prob,
-                        neg_thres_pre_prob):
-    """Generate shot noise.
-    :param shot_noise_rate_hz: the rate per pixel in hz
-    :param delta_time: the delta time for this frame in seconds
-    :param shot_noise_inten_factor: factor to model the slight increase
-        of shot noise with intensity when shot noise dominates at low intensity
-    :param inten01: the pixel light intensities in this frame; shape is used to generate output
-    :param pos_thres_pre_prob: per pixel factor to generate more
-        noise from pixels with lower ON threshold: self.pos_thres_nominal/self.pos_thres
-    :param neg_thres_pre_prob: same for OFF
+def generate_shot_noise(shot_noise_rate_hz: float,
+                        delta_time: float,
+                        shot_noise_inten_factor: float,
+                        inten01: torch.Tensor,
+                        pos_thres_pre_prob: torch.Tensor,
+                        neg_thres_pre_prob: torch.Tensor,
+                        generator: torch.Generator | None = None) -> tuple[torch.Tensor, torch.Tensor]:
+    """Sample simplified ON/OFF temporal shot-noise masks.
 
-    :returns: shot_on_coord, shot_off_coord, each are (h,w) arrays of on and off boolean True for noise events per pixel
+    Args:
+        shot_noise_rate_hz: Total per-pixel temporal noise rate in Hz.
+        delta_time: Elapsed frame interval in seconds.
+        shot_noise_inten_factor: Brightness-dependent noise-rate scale.
+        inten01: Per-pixel intensity normalized to [0, 1].
+        pos_thres_pre_prob: ON probability scale nominal / actual.
+        neg_thres_pre_prob: OFF probability scale nominal / actual.
+        generator: Optional caller-owned random generator.
+
+    Returns:
+        Boolean ON and OFF event masks with the same shape as inten01.
     """
     # new shot noise generator, generate for the entire batch of iterations over this frame
 
@@ -617,7 +634,8 @@ def generate_shot_noise(shot_noise_rate_hz,
     rand01 = torch.rand(
         size=inten01.shape,
         dtype=torch.float32,
-        device=inten01.device)  # draw_frame samples
+        device=inten01.device,
+        generator=generator)  # draw_frame samples
 
     # precompute all the shot noise cords, gets binary array size of chip
     shot_on_cord = torch.gt(

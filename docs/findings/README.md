@@ -73,10 +73,10 @@ are listed as work items in
 | [CORE-004](core_model.md#core-004) | Open question | Confirmed (probe) | float64 lin-log rationale is not supported by its own rounding grid |
 | [CORE-005](core_model.md#core-005) | Medium | Confirmed (inspection) | HDR preprocessing has no dark-response floor |
 | [CORE-006](core_model.md#core-006) | High | Resolved (CLI test) | No-SloMo CLI processing destroyed floating-point HDR contrast |
-| [LIFE-001](state_lifecycle.md#life-001) | Critical | Confirmed (probe) | `reset()` then reuse raises `TypeError` |
-| [LIFE-002](state_lifecycle.md#life-002) | High | Confirmed (probe) | `reset()` does not rewind `t_previous` |
-| [LIFE-003](state_lifecycle.md#life-003) | Critical | Confirmed (probe) | `set_dvs_params()` mid-stream raises `AttributeError` |
-| [LIFE-004](state_lifecycle.md#life-004) | High | Confirmed (probe) | `set_dvs_params()` discards per-pixel threshold mismatch |
+| [LIFE-001](state_lifecycle.md#life-001) | Critical | Resolved (functional test) | `reset()` then reuse raised `TypeError` |
+| [LIFE-002](state_lifecycle.md#life-002) | High | Resolved (functional test) | `reset()` did not rewind `t_previous` |
+| [LIFE-003](state_lifecycle.md#life-003) | Critical | Resolved (functional test) | `set_dvs_params()` mid-stream raised `AttributeError` |
+| [LIFE-004](state_lifecycle.md#life-004) | High | Resolved (functional test) | `set_dvs_params()` discarded per-pixel threshold mismatch |
 | [LIFE-005](state_lifecycle.md#life-005) | Medium | Confirmed (inspection) | `reset()` and active HDF5 storage have no defined contract |
 | [IEBCS-001](iebcs_extensions.md#iebcs-001) | High | Confirmed (probe) | Histogram noise schedule is anchored to absolute zero |
 | [IEBCS-002](iebcs_extensions.md#iebcs-002) | High | Confirmed (probe) | CDF loader uses a running maximum, not a cumulative sum |

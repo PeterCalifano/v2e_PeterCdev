@@ -132,16 +132,12 @@ blocker exists and how severe it is.
 
 | Finding | Severity | Effect on capability |
 |---|---|---|
-| [LIFE-001](findings/state_lifecycle.md#life-001) | Critical | `reset()` makes an emulator unusable; blocks sequence reuse |
-| [LIFE-003](findings/state_lifecycle.md#life-003) | Critical | `set_dvs_params()` mid-stream crashes |
 | [STREAM-001](findings/stream_and_io.md#stream-001) | High | Latency produces globally non-monotonic streams in every writer |
 | [IEBCS-001](findings/iebcs_extensions.md#iebcs-001) | High | Histogram noise emits events before the stream start |
 | [IEBCS-002](findings/iebcs_extensions.md#iebcs-002) | High | Non-cumulative noise input is silently misread |
 | [IEBCS-004](findings/iebcs_extensions.md#iebcs-004) | High | Zero-duration refractory coupling is not inert |
 | [IEBCS-005](findings/iebcs_extensions.md#iebcs-005) | High | Refractory interpolation corrupts comparator memory |
 | [V2CE-002](findings/v2ce_timing.md#v2ce-002) | High | Configured refractory period is not enforced under V2CE timing |
-| [LIFE-002](findings/state_lifecycle.md#life-002) | High | `reset()` leaves a stale time origin |
-| [LIFE-004](findings/state_lifecycle.md#life-004) | High | Preset switching discards per-pixel threshold mismatch |
 
 Medium and low severity findings, and the full evidence for each entry above,
 are in [`findings/README.md`](findings/README.md).
@@ -154,9 +150,9 @@ The ordered work to resolve them is in
 The working tree carries reviewed improvements that are not yet committed:
 removal of the merge-duplicated shot-noise, memory and writer side effects from
 `f026560`; enum-backed finite options with unchanged public CLI strings; private
-per-emulator random generators; buffered and chunked HDF5 writes with separate
-logical and physical counters; idempotent cleanup; and regressions covering
-those paths.
+per-emulator random generators; reusable model/time/preset lifecycle state;
+buffered and chunked HDF5 writes with separate logical and physical counters;
+idempotent cleanup; and regressions covering those paths.
 
 `v2ecore/model_options.py` is untracked but imported by tracked modules, so
 these changes cannot be committed piecemeal. Sequencing and commit boundaries
