@@ -69,6 +69,119 @@ def test_image_folder_reader_returns_false_at_end_of_sequence(tmp_path: Path):
     assert second_frame is None
 
 
+def test_image_folder_reader_preserves_float32_tiff_frames(tmp_path: Path) -> None:
+    image_folder_ = tmp_path / "float_frames"
+    image_folder_.mkdir()
+    source_frame_ = np.linspace(
+        0.0, 1.0 / 512.0, 36, dtype=np.float32).reshape(6, 6)
+    assert cv2.imwrite(
+        str(image_folder_ / "00000000.tiff"), source_frame_)
+
+    reader_ = ImageFolderReader(str(image_folder_), frame_rate=30.0)
+    ret_, frame_ = reader_.read()
+
+    assert ret_ is True
+    assert frame_ is not None
+    assert frame_.dtype == np.float32
+    assert frame_.ndim == 2
+    np.testing.assert_allclose(frame_, source_frame_, atol=1.0e-7)
+
+
+def test_main_no_slomo_hdr_matches_direct_float_input(monkeypatch: pytest.MonkeyPatch,
+                                                       tmp_path: Path) -> None:
+    """The no-SloMo CLI must preserve float frames and direct-model output."""
+    h5py_ = pytest.importorskip("h5py")
+    emulator_module_ = importlib.import_module("v2ecore.emulator")
+    v2e_module_ = _Import_local_v2e_module()
+
+    input_folder_ = tmp_path / "float_hdr_frames"
+    input_folder_.mkdir()
+    output_folder_ = tmp_path / "float_hdr_output"
+    height_, width_ = 6, 6
+    frame_0_ = np.linspace(
+        0.2, 0.4, height_ * width_, dtype=np.float32).reshape(
+            height_, width_)
+    frame_1_ = frame_0_ + np.float32(1.0 / 512.0)
+    assert cv2.imwrite(str(input_folder_ / "00000000.tiff"), frame_0_)
+    assert cv2.imwrite(str(input_folder_ / "00000001.tiff"), frame_1_)
+
+    args_ = _Build_v2e_args([
+        "--input", str(input_folder_),
+        "--input_frame_rate", "30",
+        "--output_folder", str(output_folder_),
+        "--unique_output_folder", "false",
+        "--overwrite",
+        "--disable_slomo",
+        "--skip_video_output",
+        "--no_preview",
+        "--output_width", str(width_),
+        "--output_height", str(height_),
+        "--hdr",
+        "--ddd_output",
+        "--dvs_h5", "events.h5",
+        "--dvs_emulator_seed", "123",
+        "--pos_thres", "0.001",
+        "--neg_thres", "0.001",
+        "--sigma_thres", "0",
+        "--cutoff_hz", "0",
+        "--leak_rate_hz", "0",
+        "--shot_noise_rate_hz", "0",
+        "--refractory_period", "0",
+    ])
+
+    monkeypatch.setattr(
+        v2e_module_, "Gooey", lambda *args_, **kwargs_: (lambda: None),
+        raising=False)
+    monkeypatch.setattr(
+        v2e_module_, "get_args", lambda: (args_, [], "v2e HDR test"))
+    monkeypatch.setattr(
+        v2e_module_, "inputVideoFileDialog", lambda: str(input_folder_))
+    monkeypatch.setattr(
+        v2e_module_.desktop, "open", lambda *args_, **kwargs_: None)
+
+    v2e_module_.main()
+
+    with h5py_.File(output_folder_ / "events.h5", "r") as h5_file_:
+        cli_frames_ = h5_file_["frame"][:]
+        cli_frame_times_ = h5_file_["frame_ts"][:].astype(np.float64) / 1.0e6
+        cli_events_ = h5_file_["events"][:]
+
+    np.testing.assert_allclose(cli_frames_[0], frame_0_, atol=1.0e-7)
+    np.testing.assert_allclose(cli_frames_[1], frame_1_, atol=1.0e-7)
+
+    direct_emulator_ = emulator_module_.EventEmulator(
+        pos_thres=0.001,
+        neg_thres=0.001,
+        sigma_thres=0.0,
+        cutoff_hz=0.0,
+        leak_rate_hz=0.0,
+        shot_noise_rate_hz=0.0,
+        refractory_period_s=0.0,
+        seed=123,
+        output_folder=None,
+        output_width=width_,
+        output_height=height_,
+        dvs_h5=None,
+        device=str(v2e_module_.torch_device),
+        hdr=True,
+        hdr_disable_prepro=False,
+    )
+    try:
+        direct_emulator_.generate_events(
+            frame_0_, float(cli_frame_times_[0]))
+        direct_events_ = direct_emulator_.generate_events(
+            frame_1_, float(cli_frame_times_[1]))
+    finally:
+        direct_emulator_.cleanup()
+
+    assert direct_events_ is not None
+    expected_events_ = direct_events_.copy()
+    expected_events_[:, 0] *= 1.0e6
+    expected_events_[expected_events_[:, 3] == -1, 3] = 0
+    np.testing.assert_array_equal(
+        cli_events_, expected_events_.astype(np.uint32))
+
+
 def test_frames_repr_handles_none_transform():
     pytest.importorskip("torch")
     dataloader_module = importlib.import_module("v2ecore.dataloader")

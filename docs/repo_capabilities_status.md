@@ -1,7 +1,7 @@
 # v2e Capabilities and Current Status
 
-Status date: 2026-07-28
-Committed baseline: `969dcc5`
+Status date: 2026-08-09
+Baseline reviewed before CORE-006: `bc8f17d`
 Branch: `feature/extend_error_models_IEBCS_V2CE`
 
 This is the single current capability/status summary: what the repository can do
@@ -16,14 +16,13 @@ explanations and no action items.
 
 - Environment: `conda run -n v2e python --version` -> `Python 3.11.11`
 - Full suite: `conda run -n v2e python -m pytest -q`
-- Fresh result after this documentation/comment pass:
-  `103 passed in 20.00s`
-- Working tree: modified and untracked; no review changes are committed
+- Isolated staged-tree result: `95 passed`
+- Additional development changes remain modified and untracked
 - Readiness: **not merge-ready**
 
 The green suite validates existing local contracts. It does not cover several
-confirmed cross-packet, cross-feature, HDR, or reference-parity defects listed
-below.
+confirmed cross-packet, cross-feature, SuperSloMo HDR, or reference-parity
+defects listed below.
 
 ## Input -> Models -> Output
 
@@ -36,7 +35,7 @@ INPUT
     nominal uint8 input | HDR/preprocessed-log modes
 
   -> TIMING / PREPROCESSING
-     source-rate processing (--disable_slomo)
+     source-rate `.npy` processing (--disable_slomo)
      or optional SuperSloMo interpolation
      crop / resize / grayscale conversion
      lin-log encoding or preprocessed-log bypass
@@ -70,8 +69,10 @@ INPUT
 | Direct frame API | Stateful `EventEmulator.generate_events(frame, t)` | Implemented and broadly regression-tested |
 | Standard CLI conversion | Video/image/synthetic input through v2e pipeline | Implemented |
 | HDR direct API and HDF5 frame storage | Float frames preserved at those boundaries | Tested |
-| HDR complete CLI path | No-SloMo path writes/reads PNG intermediates | **Incorrect: precision can be quantized away** |
-| Core default model | v2e lin-log, bandwidth, thresholds, reset, leak, noise, refractory | Implemented; scalar low-pass and HDR-dark edge defects remain |
+| HDR no-SloMo CLI path | Float TIFF -> `.npy` -> emulator/HDF5 without PNG narrowing | Tested against direct API output |
+| HDR through SuperSloMo | Interpolator output still uses PNG intermediates | Float HDR preservation unsupported and unvalidated |
+| Core default model | v2e lin-log, bandwidth, thresholds, reset, leak, noise, refractory | Implemented; HDR-dark edge defect remains |
+| Strict model validity | `--strict_model_validity` and direct API policy | Low-pass `eps > 1` fails before clamping; additional invariants remain planned |
 | CSDVS / SCIDVS | Optional sensor variants | Implemented; not revalidated against references in this audit |
 | IEBCS options | Same broad effect classes exposed as opt-in flags | Experimental; not IEBCS-output-equivalent |
 | V2CE options | Irregular placement of existing global event layers | Experimental; not V2CE local timing inference |
@@ -141,7 +142,6 @@ blocker exists and how severe it is.
 | [V2CE-002](findings/v2ce_timing.md#v2ce-002) | High | Configured refractory period is not enforced under V2CE timing |
 | [LIFE-002](findings/state_lifecycle.md#life-002) | High | `reset()` leaves a stale time origin |
 | [LIFE-004](findings/state_lifecycle.md#life-004) | High | Preset switching discards per-pixel threshold mismatch |
-| [CORE-003](findings/core_model.md#core-003) | High | `filter_tau_const` is accepted and ignored |
 
 Medium and low severity findings, and the full evidence for each entry above,
 are in [`findings/README.md`](findings/README.md).
@@ -155,8 +155,8 @@ The working tree carries reviewed improvements that are not yet committed:
 removal of the merge-duplicated shot-noise, memory and writer side effects from
 `f026560`; enum-backed finite options with unchanged public CLI strings; private
 per-emulator random generators; buffered and chunked HDF5 writes with separate
-logical and physical counters; idempotent cleanup; float HDF5 frame storage and
-float TIFF reading; and the regressions covering those paths.
+logical and physical counters; idempotent cleanup; and regressions covering
+those paths.
 
 `v2ecore/model_options.py` is untracked but imported by tracked modules, so
 these changes cannot be committed piecemeal. Sequencing and commit boundaries
@@ -169,14 +169,17 @@ are owned by
   extensions in the emulator.
 - `01c0155`: added the main later IEBCS contrast-latency, histogram-noise, and
   refractory-coupling paths; current lifecycle defects originate here.
-- `fb40595`: added optimization work; the scalar low-pass clamp regression
-  remains.
+- `fb40595`: added optimization work; its low-pass regressions were resolved by
+  `bc8f17d`.
 - `f026560`: merged `dev_main`; conflict resolution duplicated stateful side
   effects and writer calls. The open tree removes them.
 - `6b66007`, `a7a4071`, `379db53`: reorganized and implemented comparative
   benchmarks; raw global ordering is currently hidden by post-sort.
 - `50cbe8b`, `969dcc5`: expanded status/docs, but linked untracked files and
   overstated IEBCS/V2CE behavior. This documentation pass corrects those claims.
+- `66cdfb4`: fixed the comparative benchmark entrypoint and empty-data plots.
+- `bc8f17d`: consolidated low-pass stability, state aliasing, explicit tau, and
+  opt-in strict validity.
 
 ## Workspace Integrations
 

@@ -3,6 +3,7 @@ DVS simulator.
 Compute events from input frames.
 """
 from collections import deque
+from collections.abc import Sequence
 import matplotlib
 import matplotlib.pyplot as plt
 import atexit
@@ -544,21 +545,31 @@ class EventEmulator(object):
 
         atexit.register(self.cleanup)
 
-    def prepare_storage(self, n_frames, frame_ts):
-        # extra prepare for frame storage
+    def prepare_storage(self,
+                        n_frames: int,
+                        frame_ts: Sequence[float]) -> None:
+        """Create HDF5 frame metadata datasets before event generation.
+
+        Args:
+            n_frames: Number of source or interpolated frames to store.
+            frame_ts: Frame timestamps in seconds.
+
+        HDR frames use float32 storage. Nominal frames retain the legacy uint8
+        dataset schema.
+        """
         if self.dvs_h5:
-            # for frame
+            frame_dtype_ = "float32" if self.hdr else "uint8"
             self.frame_h5_dataset = self.dvs_h5.create_dataset(
                 name="frame",
                 shape=(n_frames, self.output_height, self.output_width),
-                dtype="uint8",
+                dtype=frame_dtype_,
                 compression="gzip")
 
-            frame_ts_arr = np.array(frame_ts, dtype=np.float32) * 1e6
+            frame_ts_arr_ = np.array(frame_ts, dtype=np.float32) * 1e6
             self.frame_ts_dataset = self.dvs_h5.create_dataset(
                 name="frame_ts",
                 shape=(n_frames,),
-                data=frame_ts_arr.astype(np.uint32),
+                data=frame_ts_arr_.astype(np.uint32),
                 dtype="uint32",
                 compression="gzip")
             # corresponding event idx
@@ -1257,10 +1268,11 @@ class EventEmulator(object):
 
         # like a DAVIS, write frame into the file if it's HDF5
         if self.frame_h5_dataset is not None:
-            # TODO remove this option, seems useless or
-            # Save frame data
-            self.frame_h5_dataset[self.frame_counter] = new_frame.astype(
-                np.uint8)
+            # Preserve HDR precision while retaining the established uint8
+            # schema for nominal frame recording.
+            stored_frame_ = new_frame.astype(
+                self.frame_h5_dataset.dtype, copy=False)
+            self.frame_h5_dataset[self.frame_counter] = stored_frame_
 
         # update frame counter
         self.frame_counter += 1

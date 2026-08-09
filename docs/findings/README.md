@@ -72,6 +72,7 @@ are listed as work items in
 | [CORE-003](core_model.md#core-003) | High | Resolved (test) | `apply_low_pass_filter` silently ignored `filter_tau_const` |
 | [CORE-004](core_model.md#core-004) | Open question | Confirmed (probe) | float64 lin-log rationale is not supported by its own rounding grid |
 | [CORE-005](core_model.md#core-005) | Medium | Confirmed (inspection) | HDR preprocessing has no dark-response floor |
+| [CORE-006](core_model.md#core-006) | High | Resolved (CLI test) | No-SloMo CLI processing destroyed floating-point HDR contrast |
 | [LIFE-001](state_lifecycle.md#life-001) | Critical | Confirmed (probe) | `reset()` then reuse raises `TypeError` |
 | [LIFE-002](state_lifecycle.md#life-002) | High | Confirmed (probe) | `reset()` does not rewind `t_previous` |
 | [LIFE-003](state_lifecycle.md#life-003) | Critical | Confirmed (probe) | `set_dvs_params()` mid-stream raises `AttributeError` |

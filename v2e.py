@@ -777,8 +777,7 @@ def main() -> None: #--check-untyped-defs
                                   color_mode=args.dvs_vid_color_mode,
                                   avi_frame_rate=args.avi_frame_rate)
 
-    def flush_event_batch(
-            event_chunks: list[np.ndarray]) -> np.ndarray | None:
+    def flush_event_batch(event_chunks: list[np.ndarray]) -> np.ndarray | None:
         """Concatenate buffered event chunks once and clear the buffer."""
         if len(event_chunks) == 0:
             return None
@@ -1002,25 +1001,16 @@ def main() -> None: #--check-untyped-defs
                     # Read back to memory
                     interpFramesFilenames = all_images(interpFramesFolder)
                     # Number of frames
-                    n = len(interpFramesFilenames)
+                    num_frames = len(interpFramesFilenames)
 
                 else:
                     logger.info(
-                        f'*** Stage 2/3: turning npy frame files to png '
+                        f'*** Stage 2/3: using source-rate numpy frames '
                         f'from {source_frames_dir}')
-                    interpFramesFilenames = []
-                    n = 0
-                    src_files = sorted(
+                    interpFramesFilenames = sorted(
                         glob.glob("{}".format(source_frames_dir) + "/*.npy"))
-                    for frame_idx, src_file_path in tqdm(
-                            enumerate(src_files), desc='npy2png', unit='fr'):
-                        src_frame = np.load(src_file_path)
-                        tgt_file_path = os.path.join(
-                            interpFramesFolder, str(frame_idx) + ".png")
-                        interpFramesFilenames.append(tgt_file_path)
-                        n += 1
-                        cv2.imwrite(tgt_file_path, src_frame)
-                    interpTimes = np.array(range(n))
+                    num_frames = len(interpFramesFilenames)
+                    interpTimes = np.array(range(num_frames))
 
                 # compute times of output integrated frames
                 nFrames = len(interpFramesFilenames)
@@ -1076,10 +1066,13 @@ def main() -> None: #--check-untyped-defs
                         for i in range(nFrames):
 
                             # Read frame
-                            fr = read_image(interpFramesFilenames[i])
+                            frame_path_ = interpFramesFilenames[i]
+                            frame_ = np.load(frame_path_, allow_pickle=False) \
+                                if frame_path_.endswith(".npy") \
+                                else read_image(frame_path_)
                             # Get events
                             newEvents = emulator.generate_events(
-                                fr, interpTimes[i])
+                                frame_, interpTimes[i])
 
                             pbar.update(1)  # Update progress bar
 

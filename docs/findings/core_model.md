@@ -315,3 +315,50 @@ that derivation in `core_model_mapping.md` next to the `KEY[E-INTEN-SCALE]`
 anchor. Add a bright-to-black HDR regression asserting the low-pass state keeps
 evolving across the transition. While doing so, resolve the `+20` DEVNOTE so
 both paths cite the same justification.
+
+---
+
+## CORE-006
+
+**No-SloMo CLI processing destroyed floating-point HDR contrast**
+
+- **Severity:** High
+- **Status:** Resolved (end-to-end CLI regression)
+- **Where:** `v2e.py`, no-SloMo branch between source-frame preparation and
+  event emulation
+
+### Issue
+
+Stage 1 correctly stores processed source frames as `.npy`, preserving their
+dtype and values. When SloMo is disabled, Stage 2 reloads each array, writes it
+as PNG with `cv2.imwrite`, then Stage 3 reads the PNG as 8-bit grayscale. This
+unnecessary serialization narrows normalized float HDR data before it reaches
+`EventEmulator`.
+
+### Why it is an issue
+
+`--hdr` declares floating-point grayscale input in `[0, 1]`. Sub-8-bit changes
+are valid signal in that domain and can alter photoreceptor and event output.
+The CLI therefore behaves differently from direct `EventEmulator` input and
+from HDF5 frame storage even though all three advertise HDR support.
+
+### Evidence
+
+Writing `[0, 1/512, 1]` as a float32 PNG with the current OpenCV path and
+reading it back as grayscale produces `[0, 0, 1]`. The `1/512` contrast is lost
+while the preceding `.npy` file still contains it exactly.
+
+### Suggested fix
+
+For the no-SloMo branch, pass the existing ordered `.npy` file list directly to
+the emulation loop and load each frame with `np.load`. Keep image loading only
+for SloMo-generated PNG files. Validate the complete CLI path by comparing its
+stored float frames and deterministic events with direct emulator input.
+
+### Resolution
+
+The no-SloMo branch now passes the existing ordered `.npy` sequence directly to
+the emulation loop and loads it with `allow_pickle=False`. The end-to-end
+regression uses float32 TIFF input and verifies both HDF5 frame preservation and
+event equality against direct `EventEmulator` input. SuperSloMo-generated PNG
+output is unchanged and is not covered by this resolution.

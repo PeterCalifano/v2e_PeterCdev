@@ -183,8 +183,10 @@ for full parameter details and interaction rules.
 
 + Inputs:
   regular video files, folders of image frames, and Python synthetic-input
-  generators via `--synthetic_input`; HDR and preprocessed-log HDR inputs are
-  also supported.
+  generators via `--synthetic_input`; direct `EventEmulator` and selected reader
+  boundaries support HDR/preprocessed-log input. The no-SloMo CLI path preserves
+  float HDR frames end to end; float HDR preservation through SuperSloMo's PNG
+  output remains unsupported and unvalidated.
 + Temporal modeling:
   optional SuperSloMo interpolation for sub-frame timing, or direct source-rate
   processing with `--disable_slomo`.

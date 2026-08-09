@@ -56,7 +56,8 @@ class ImageFolderReader(object):
             raise FileNotFoundError(
                 f'input folder "{self.image_folder_path}" does not contain any image files')
 
-        frame = cv2.imread(self.image_file_list[0])
+        frame = cv2.imread(
+            self.image_file_list[0], cv2.IMREAD_UNCHANGED)
         if frame is None:
             logger.error(f'could not read a frame from file "{self.image_file_list[0]}" in folder "{self.image_folder_path}"')
             raise FileNotFoundError(f'could not read a frame named {self.image_file_list[0]} from folder {self.image_folder_path}')
@@ -75,7 +76,9 @@ class ImageFolderReader(object):
             return False, None
 
         if not skip:
-            frame = cv2.imread(self.image_file_list[self.current_frame_idx])
+            frame = cv2.imread(
+                self.image_file_list[self.current_frame_idx],
+                cv2.IMREAD_UNCHANGED)
         else:
             frame = None
         self.current_frame_idx += 1
@@ -451,9 +454,9 @@ def select_events_in_roi(events, x, y):
     return events[region]
 
 
-def histogram_events_in_time_bins(
-        events, start=0, stop=3.5,
-        time_bin_ms=50, polarity=None):
+def histogram_events_in_time_bins(events,
+                                  start=0, stop=3.5,
+                                  time_bin_ms=50, polarity=None):
     """ Count the amount of events in each bin.
     Parameters
     ----------
