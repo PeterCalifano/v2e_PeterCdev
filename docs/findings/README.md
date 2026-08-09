@@ -92,8 +92,8 @@ are listed as work items in
 | [V2CE-002](v2ce_timing.md#v2ce-002) | High | Confirmed (inspection) | Refractory gating uses nominal spacing, not actual gaps |
 | [TOOL-001](tooling_and_benchmarks.md#tool-001) | Medium | Resolved (CLI test) | Comparative benchmark resolved the wrong repository root |
 | [TOOL-002](tooling_and_benchmarks.md#tool-002) | Medium | Confirmed (inspection) | Benchmark sorts the stream before measuring stream validity |
-| [TOOL-003](tooling_and_benchmarks.md#tool-003) | Low | Confirmed (inspection) | Dead polynomial helper duplicated inline |
-| [TOOL-004](tooling_and_benchmarks.md#tool-004) | Low | Confirmed (inspection) | Noise-rate warning text contradicts its own threshold |
+| [TOOL-003](tooling_and_benchmarks.md#tool-003) | Low | Resolved (numerical test) | Dead polynomial helper was duplicated inline |
+| [TOOL-004](tooling_and_benchmarks.md#tool-004) | Low | Resolved (diagnostic test) | Noise-rate warning text contradicted its own threshold |
 | [TOOL-005](tooling_and_benchmarks.md#tool-005) | Medium | Confirmed (inspection) | Noise calibration loop length is unbounded in Python |
 | [TOOL-006](tooling_and_benchmarks.md#tool-006) | Low | Confirmed (inspection) | Package version disagrees with the changelog |
 | [TOOL-007](tooling_and_benchmarks.md#tool-007) | Low | Resolved (functional test) | Parallel histogram branch was never exercised |

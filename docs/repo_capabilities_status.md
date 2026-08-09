@@ -1,7 +1,7 @@
 # v2e Capabilities and Current Status
 
 Status date: 2026-08-09
-Current reviewed baseline: `6d5f188`
+Current reviewed baseline: `af1b302`
 Branch: `feature/extend_error_models_IEBCS_V2CE`
 
 This is the single current capability/status summary: what the repository can do
@@ -16,7 +16,7 @@ explanations and no action items.
 
 - Environment: `conda run -n v2e python --version` -> `Python 3.11.11`
 - Full suite: `conda run -n v2e python -m pytest -q`
-- Isolated histogram/test-hygiene candidate: `100 passed`
+- Isolated estimator candidate: `102 passed`
 - `EventDataGenerationLib` direct conversion: `4 passed`
 - `EventDataGenerationLib` persistent context: `1 passed, 1 failed`; the
   remaining assertion compares different seeds after every fixture stream
@@ -153,11 +153,11 @@ The ordered work to resolve them is in
 
 ## Open-Tree Changes Awaiting Commit
 
-The current candidate adds an exact million-track regression for the public
-histogram dispatcher, retains its measured-faster parallel implementation, and
-removes print-only pytest timing modules plus one duplicated emulator sanity
-test. Estimator numerics, package identity, and sensor-behaviour changes remain
-outside this batch. Sequencing and remaining commit boundaries are owned by
+The current candidate consolidates the Graca-Delbruck photoreceptor-noise fit
+into its documented helper and makes the noise-rate warning report the boundary
+it enforces. Numerical and diagnostic regressions cover both contracts. The
+calibration loop, package identity, and sensor-behaviour changes remain outside
+this batch. Sequencing and remaining commit boundaries are owned by
 [`developments/consolidation_staged_plan.md`](developments/consolidation_staged_plan.md).
 
 ## Recent Commit Reassessment
@@ -190,6 +190,8 @@ outside this batch. Sequencing and remaining commit boundaries are owned by
   warning accounting, and neighboring merge-duplicated hot-path operations.
 - `6d5f188`: consolidated finite DVS, IEBCS, V2CE, and renderer options as
   native string enums while preserving public CLI nomenclature.
+- `af1b302`: added functional coverage for the million-track histogram
+  dispatcher and removed assertion-free pytest timing modules.
 
 ## Workspace Integrations
 

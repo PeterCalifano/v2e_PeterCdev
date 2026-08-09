@@ -116,10 +116,10 @@ Measure raw stream validity **before** any normalisation:
 
 ## TOOL-003
 
-**Dead polynomial helper duplicated inline**
+**Dead polynomial helper was duplicated inline**
 
 - **Severity:** Low
-- **Status:** Confirmed (inspection)
+- **Status:** Resolved (numerical test)
 - **Where:** `v2ecore/emulator_utils.py`,
   `PhotoreceptorNoiseVoltageEstimator._compute_vn_from_log_rate_per_hz` and
   `__call__`, anchor `KEY[G-PHOTO-VRMS-FIT]`
@@ -148,8 +148,8 @@ attached to the copy nobody reads.
 Delete the inline duplicate and call the helper:
 
 ```python
-thr_per_vn = 10 ** self._log10_thr_per_vn(x)   # or reuse the existing helper
-vn = float(np.mean(mins / thr_per_vn))
+sampled_vn = self._compute_vn_from_log_rate_per_hz(mins, x)
+vn = float(np.mean(sampled_vn))
 ```
 
 Resolve the `# DOUBT` comment by pointing at the helper's docstring and the
@@ -157,14 +157,21 @@ Resolve the `# DOUBT` comment by pointing at the helper's docstring and the
 `KEY[G-PHOTO-VRMS-FIT]` on the surviving copy so `core_model_mapping.md` still
 resolves.
 
+### Resolution
+
+`__call__` now maps the sampled threshold array through the documented helper,
+leaving one anchored fit implementation. A numerical regression checks the
+published fit at a fixed log-rate point for multiple thresholds; the existing
+output, cache, and instance-isolation tests remain green.
+
 ---
 
 ## TOOL-004
 
-**Noise-rate warning text contradicts its own threshold**
+**Noise-rate warning text contradicted its own threshold**
 
 - **Severity:** Low
-- **Status:** Confirmed (inspection)
+- **Status:** Resolved (diagnostic test)
 - **Where:** `v2ecore/emulator_utils.py`,
   `PhotoreceptorNoiseVoltageEstimator.__call__`
 
@@ -199,6 +206,12 @@ if rate_per_bw > RATE_PER_BW_WARN:
         f'Shot noise rate per Hz of bandwidth {rate_per_bw:.3g} is larger '
         f'than {RATE_PER_BW_WARN} (...)')
 ```
+
+### Resolution
+
+The condition and message now use the same module-level `0.5` boundary. A
+functional logging regression activates the branch and verifies that the
+reported limit is the one actually enforced.
 
 ---
 
@@ -284,10 +297,10 @@ dependency, an unreliable version string blocks that from being meaningful.
 
 ### Suggested fix
 
-Set `pyproject.toml` to the changelog's newest released version, and add the
-release step to whatever checklist governs tagging. A test asserting
-`importlib.metadata.version("v2e")` matches the top entry of `CHANGELOG.md`
-makes the two impossible to desynchronise again.
+Assign a distinct development version for the extended fork and document its
+upstream baseline and final-release gate. Keep version consistency as an
+explicit release-review responsibility rather than a functional test that
+pins a configuration value.
 
 ---
 

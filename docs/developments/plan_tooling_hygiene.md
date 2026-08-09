@@ -8,9 +8,9 @@ and test-suite hygiene. Owns
 Not in scope: the accelerated backend roadmap, which is
 [`performance_optimization_opportunities.md`](performance_optimization_opportunities.md).
 
-Status: active. TOOL-001 and TOOL-007 are complete; TOOL-002 through TOOL-006
-remain open. Items here are independent of each other, except TOOL-002 which is
-coordinated with
+Status: active. TOOL-001, TOOL-003, TOOL-004, and TOOL-007 are complete;
+TOOL-002, TOOL-005, and TOOL-006 remain open. Items here are independent of
+each other, except TOOL-002 which is coordinated with
 [`plan_event_ordering.md`](plan_event_ordering.md).
 
 ## Benchmarks
@@ -32,12 +32,12 @@ coordinated with
 
 ## Estimator numerics
 
-- [ ] Delete the inline duplicate of the Graca–Delbruck polynomial and call
+- [x] Delete the inline duplicate of the Graca–Delbruck polynomial and call
       `_compute_vn_from_log_rate_per_hz`; keep the `KEY[G-PHOTO-VRMS-FIT]`
       anchor on the surviving copy (TOOL-003).
-- [ ] Resolve the `# DOUBT what's this?` comment by pointing at that helper's
-      docstring and the spreadsheet derivation (TOOL-003).
-- [ ] Fix the warning text to quote its own threshold constant (TOOL-004).
+- [x] Resolve the `# DOUBT what's this?` comment through the helper's docstring
+      and the spreadsheet derivation (TOOL-003).
+- [x] Fix the warning text to quote its own threshold constant (TOOL-004).
 - [ ] Replace the scalar Python IIR loop with a vectorised filter, or with the
       closed-form variance ratio if it agrees with the simulated value
       (TOOL-005).
@@ -48,10 +48,10 @@ coordinated with
 
 ## Packaging
 
-- [ ] Set `pyproject.toml` to the newest released version in `CHANGELOG.md`
-      (TOOL-006).
-- [ ] Add a test asserting the installed version matches the changelog's top
-      entry (TOOL-006).
+- [ ] Assign a distinct development version to the extended fork and document
+      its upstream baseline and final-release gate (TOOL-006).
+- [x] Keep version validation as a release-review step rather than a test that
+      pins a configuration string (TOOL-006 policy decision).
 - [ ] Reconcile `AGENTS.md` (Python >= 3.12) with the validated environment
       (Python 3.11.11), or state explicitly that `AGENTS.md` describes a
       cross-project preference rather than this repository's requirement.
@@ -69,8 +69,8 @@ coordinated with
 
 ## Gate
 
-- [x] `conda run -n v2e python -m pytest -q` (`100 passed` in the isolated
-      histogram/test-hygiene candidate).
+- [x] `conda run -n v2e python -m pytest -q` (`102 passed` in the isolated
+      estimator candidate).
 - [x] `conda run -n v2e python -m compileall -q v2e.py v2ecore test`.
 - [x] `python3.12 -m compileall -q v2e.py v2ecore test`.
 - [x] `git diff --check`.

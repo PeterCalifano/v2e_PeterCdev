@@ -80,6 +80,7 @@ def rescale_intensity_frame(new_frame):
 
 
 IIR_MAX_WARNINGS = 10
+_PHOTO_NOISE_RATE_PER_BW_WARN = 0.5
 
 
 class LowPassFilter:
@@ -359,7 +360,12 @@ def compute_event_map(diff_frame, pos_thres, neg_thres):
 
 
 class PhotoreceptorNoiseVoltageEstimator:
-    """Compute and cache photoreceptor noise RMS needed for a target shot-noise rate."""
+    """Estimate and cache noise RMS for a target photoreceptor event rate.
+
+    The estimator combines the Graca-Delbruck threshold/noise-rate fit with a
+    sampled first-order photoreceptor response. Each instance owns its random
+    generator and one-entry argument cache.
+    """
 
     __slots__ = (
         "_rng",
@@ -379,6 +385,17 @@ class PhotoreceptorNoiseVoltageEstimator:
                  value_rel_tolerance: float = 1e-6,
                  value_abs_tolerance: float = 1e-12,
                  num_threshold_samples: int = 300) -> None:
+        """Initialize estimator randomness, cache tolerances, and sample count.
+
+        Args:
+            seed: Seed for the estimator-owned NumPy random generator.
+            sample_rate_rel_tolerance: Relative sample-rate difference accepted
+                by the one-entry cache.
+            value_rel_tolerance: Relative tolerance for other cached inputs.
+            value_abs_tolerance: Absolute tolerance for all cached inputs.
+            num_threshold_samples: Number of ON/OFF threshold pairs sampled
+                for the voltage estimate.
+        """
         self._rng = np.random.default_rng(seed)
         self._last_args: tuple[float, float, float, float, float, float] | None = None
         self._last_vn: float | None = None
@@ -391,23 +408,42 @@ class PhotoreceptorNoiseVoltageEstimator:
 
     @property
     def computation_count(self) -> int:
+        """Return the number of non-cached calibration computations."""
         return self._computation_count
 
     def reset_cache(self) -> None:
+        """Discard the cached argument tuple and calibrated voltage."""
         self._last_args = None
         self._last_vn = None
 
-    def _compute_vn_from_log_rate_per_hz(self, thr: float, x: float) -> float:
-        # y = log10(thr/Vn)
-        # x = log10(Rn/f3db)
-        # see the plot Fig. 3 from Graca, Rui, and Tobi Delbruck. 2021. “Unraveling the Paradox of Intensity-Dependent DVS Pixel Noise.” arXiv [eess.SY]. arXiv. http://arxiv.org/abs/2109.08640.
-        # the fit is computed in media/noise_event_rate_simulation.xlsx spreadsheet
+    def _compute_vn_from_log_rate_per_hz(self,
+                                         threshold_: float | np.ndarray,
+                                         log_rate_per_hz_: float) -> float | np.ndarray:
+        """Map event thresholds to required RMS photoreceptor noise.
+
+        The polynomial fits Figure 3 of Graca and Delbruck (2021). Its
+        spreadsheet derivation is stored in
+        ``media/noise_event_rate_simulation.xlsx``.
+
+        Args:
+            threshold_: Scalar or sampled ON/OFF threshold in log units.
+            log_rate_per_hz_: Base-10 logarithm of noise rate divided by
+                photoreceptor bandwidth.
+
+        Returns:
+            Required RMS noise voltage with the same shape as ``threshold_``.
+        """
+        # y = log10(threshold / Vn), x = log10(Rn / f3db).
         # KEY[G-PHOTO-VRMS-FIT]: fitted relation from Graca & Delbruck 2021
         # used to map target noise-rate-per-bandwidth to RMS noise voltage.
-        y = -0.0026 * x ** 3 - 0.036 * x ** 2 - 0.1949 * x + 0.321
-        thr_per_vn = 10 ** y  # to get thr/vn
-        # compute necessary vn to give us this noise rate per pixel at this pixel bandwidth
-        return thr / thr_per_vn
+        log_threshold_per_vn_ = (
+            -0.0026 * log_rate_per_hz_ ** 3
+            - 0.036 * log_rate_per_hz_ ** 2
+            - 0.1949 * log_rate_per_hz_
+            + 0.321
+        )
+        threshold_per_vn_ = 10 ** log_threshold_per_vn_
+        return threshold_ / threshold_per_vn_
 
     def _cache_hit(self,
                    shot_noise_rate_hz: float,
@@ -443,32 +479,19 @@ class PhotoreceptorNoiseVoltageEstimator:
                  pos_thr: float,
                  neg_thr: float,
                  sigma_thr: float) -> float:
-        """
-         Computes the necessary photoreceptor noise voltage to result in observed shot noise rate at low light intensity.
-         This computation relies on the known f3dB photoreceptor lowpass filter cutoff frequency and the known (nominal) event threshold.
-         emulator.py injects Gaussian distributed noise to the photoreceptor that should in principle generate the desired shot noise events.
+        """Estimate pre-filter noise RMS for a target event-noise rate.
 
-         See the file media/noise_event_rate_simulation.xlsx for the simulation data and curve fit.
+        Args:
+            shot_noise_rate_hz: Desired total pixel shot-noise rate in Hz.
+            f3db: First-order photoreceptor cutoff frequency in Hz.
+            sample_rate_hz: Upsampled frame rate before low-pass filtering.
+            pos_thr: Nominal ON threshold in natural-log units.
+            neg_thr: Nominal OFF threshold in natural-log units.
+            sigma_thr: Standard deviation of per-pixel thresholds.
 
-        Parameters
-        -----------
-         shot_noise_rate_hz: float
-            the desired pixel shot noise rate in hz
-         f3db: float
-            the 1st-order IIR RC lowpass filter cutoff frequency in Hz
-         sample_rate_hz: float
-            the sample rate (up-sampled frame rate) before IIR lowpassing the noise
-         pos_thr:float
-            on threshold in ln units
-         neg_thr:float
-            off threshold in ln units. The on and off thresholds are averaged to obtain a single threshold.
-         sigma_thr: float
-            the std deviations of the thresholds
-
-        Returns
-        -----------
-        float
-             Noise signal Gaussian RMS value in log_e units, to be added as Gaussian source directly to log photoreceptor output signal
+        Returns:
+            Gaussian RMS in natural-log units to inject before the
+            photoreceptor low-pass filter.
         """
         if self._cache_hit(
                 shot_noise_rate_hz=shot_noise_rate_hz, f3db=f3db, sample_rate_hz=sample_rate_hz,
@@ -479,9 +502,12 @@ class PhotoreceptorNoiseVoltageEstimator:
         # Simulation data are on ON event rates, divide by 2 here to end up with correct total rate
         rate_per_bw = 0.5 * (shot_noise_rate_hz / f3db)
         
-        if rate_per_bw > 0.5:
+        if rate_per_bw > _PHOTO_NOISE_RATE_PER_BW_WARN:
             logger.warning(
-                f'Shot noise rate per hz of bandwidth is larger than 0.1 (rate_hz={shot_noise_rate_hz} Hz, 3dB bandwidth={f3db} Hz)')
+                f'Shot noise rate per Hz of bandwidth is larger than '
+                f'{_PHOTO_NOISE_RATE_PER_BW_WARN:g} '
+                f'(rate_hz={shot_noise_rate_hz} Hz, '
+                f'3dB bandwidth={f3db} Hz)')
             
         x = math.log10(rate_per_bw)
 
@@ -501,10 +527,10 @@ class PhotoreceptorNoiseVoltageEstimator:
 
         mins = np.minimum(pos_samps, neg_samps)
         
-        # Compute the necessary vn for each sampled threshold, and average
-        y = -0.0026 * x ** 3 - 0.036 * x ** 2 - 0.1949 * x + 0.321 # DOUBT what's this?
-        thr_per_vn = 10 ** y
-        vn = float(np.mean(mins / thr_per_vn))
+        # Map every sampled threshold through the documented fitted physical
+        # relation, then average the required RMS voltage.
+        sampled_vn_ = self._compute_vn_from_log_rate_per_hz(mins, x)
+        vn = float(np.mean(sampled_vn_))
 
         # Now we need to find the scaling factor from white noise. To get the correct noise vn after RC lowpass to get this NEB factor, we generate white samples here, lowpass filter them the same exact way as we do in the emulator (i.e. with same IIR time constant and sample rate). Compute the variance, and scale the amplitude to give us vn
         tau = 1/(f3db*2*math.pi)
@@ -569,7 +595,19 @@ def compute_photoreceptor_noise_voltage(shot_noise_rate_hz: float,
                                         pos_thr: float,
                                         neg_thr: float,
                                         sigma_thr: float) -> float:
-    """Backward-compatible wrapper around a shared estimator instance."""
+    """Estimate photoreceptor-noise voltage through the shared estimator.
+
+    Args:
+        shot_noise_rate_hz: Desired total pixel shot-noise rate in Hz.
+        f3db: First-order photoreceptor cutoff frequency in Hz.
+        sample_rate_hz: Upsampled frame rate before low-pass filtering.
+        pos_thr: Nominal ON threshold in natural-log units.
+        neg_thr: Nominal OFF threshold in natural-log units.
+        sigma_thr: Standard deviation of per-pixel thresholds.
+
+    Returns:
+        Gaussian RMS in natural-log units to inject before filtering.
+    """
     
     return _DEFAULT_PHOTORECEPTOR_NOISE_ESTIMATOR(
         shot_noise_rate_hz=shot_noise_rate_hz,
