@@ -1,4 +1,5 @@
 from pathlib import Path
+import logging
 import random
 
 import h5py
@@ -1211,3 +1212,125 @@ def test_seeded_stream_matches_when_run_alone_or_with_another_emulator() -> None
     together_ = _Run_private_rng_pair(reverse_order_=False, include_second_=True)
 
     assert np.array_equal(alone_["a"], together_["a"])
+
+
+def test_on_events_advance_comparator_memory_once() -> None:
+    """Each emitted ON event advances memory by one positive threshold."""
+    emulator_ = EventEmulator(
+        pos_thres=0.08,
+        neg_thres=0.08,
+        sigma_thres=0.0,
+        cutoff_hz=0.0,
+        leak_rate_hz=0.0,
+        shot_noise_rate_hz=0.0,
+        photoreceptor_noise=False,
+        refractory_period_s=0.0,
+        seed=17,
+        output_width=1,
+        output_height=1,
+        device="cpu",
+    )
+    dark_frame_ = np.zeros((1, 1), dtype=np.uint8)
+    bright_frame_ = np.full((1, 1), 255, dtype=np.uint8)
+
+    try:
+        emulator_.generate_events(dark_frame_, 0.0)
+        base_before_ = float(emulator_.base_log_frame[0, 0].cpu().item())
+        events_ = emulator_.generate_events(bright_frame_, 1.0 / 30.0)
+        base_after_ = float(emulator_.base_log_frame[0, 0].cpu().item())
+    finally:
+        emulator_.cleanup()
+
+    assert events_ is not None
+    on_event_count_ = int(np.sum(events_[:, 3] == 1.0))
+    off_event_count_ = int(np.sum(events_[:, 3] == -1.0))
+    assert on_event_count_ > 0
+    assert off_event_count_ == 0
+    assert base_after_ == pytest.approx(
+        base_before_ + on_event_count_ * 0.08)
+
+
+def test_scidvs_highpass_applies_one_decay_step() -> None:
+    """SCIDVS applies its nonlinear Euler decay exactly once per frame."""
+    emulator_ = EventEmulator(
+        pos_thres=100.0,
+        neg_thres=100.0,
+        sigma_thres=0.0,
+        cutoff_hz=0.0,
+        leak_rate_hz=0.0,
+        shot_noise_rate_hz=0.0,
+        photoreceptor_noise=False,
+        refractory_period_s=0.0,
+        scidvs=True,
+        seed=23,
+        output_width=1,
+        output_height=1,
+        device="cpu",
+    )
+    frames_ = tuple(
+        np.full((1, 1), intensity_, dtype=np.uint8)
+        for intensity_ in (0, 64, 192, 128)
+    )
+
+    try:
+        emulator_.generate_events(frames_[0], 0.0)
+        emulator_.generate_events(frames_[1], 0.001)
+        emulator_.generate_events(frames_[2], 0.002)
+        highpass_before_ = emulator_.scidvs_highpass.clone()
+        previous_photo_before_ = emulator_.scidvs_previous_photo.clone()
+        tau_before_ = emulator_.scidvs_tau_arr.clone()
+
+        emulator_.generate_events(frames_[3], 0.003)
+        actual_highpass_ = emulator_.scidvs_highpass.clone()
+        current_photo_ = emulator_.lp_log_frame.clone()
+    finally:
+        emulator_.cleanup()
+
+    efold_ = 1.0 / 0.7
+    decay_rate_ = torch.sinh(highpass_before_ / efold_) / tau_before_
+    expected_highpass_ = (
+        highpass_before_
+        + current_photo_
+        - previous_photo_before_
+        - 0.001 * decay_rate_
+    )
+
+    assert torch.count_nonzero(highpass_before_).item() > 0
+    assert torch.allclose(
+        actual_highpass_, expected_highpass_, rtol=1e-5, atol=1e-6)
+
+
+def test_no_event_frame_consumes_one_warning_budget_entry(caplog: pytest.LogCaptureFixture) -> None:
+    """One empty frame emits one warning and advances its warning budget once."""
+    emulator_ = EventEmulator(
+        pos_thres=0.2,
+        neg_thres=0.2,
+        sigma_thres=0.0,
+        cutoff_hz=0.0,
+        leak_rate_hz=0.0,
+        shot_noise_rate_hz=0.0,
+        photoreceptor_noise=False,
+        refractory_period_s=0.0,
+        seed=29,
+        output_width=1,
+        output_height=1,
+        device="cpu",
+    )
+    unchanged_frame_ = np.zeros((1, 1), dtype=np.uint8)
+
+    try:
+        emulator_.generate_events(unchanged_frame_, 0.0)
+        caplog.clear()
+        with caplog.at_level(logging.WARNING, logger=emulator_module.__name__):
+            emulator_.generate_events(unchanged_frame_, 0.001)
+    finally:
+        emulator_.cleanup()
+
+    no_event_records_ = [
+        record_
+        for record_ in caplog.records
+        if record_.name == emulator_module.__name__
+        and record_.getMessage().startswith("no signal events generated")
+    ]
+    assert emulator_.no_events_warning_count == 1
+    assert len(no_event_records_) == 1

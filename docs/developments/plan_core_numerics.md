@@ -52,6 +52,17 @@ and CORE-005 remain open.
 - [ ] Under strict validity, reject non-floating-point frames supplied with
       `hdr=True` instead of only warning before applying HDR preprocessing.
 
+## Merge-artifact repair
+
+- [x] Add functional regressions for one-step SCIDVS decay, one-threshold
+      comparator-memory advancement, and one warning-budget update per empty
+      frame.
+- [x] Restore one explicit Euler SCIDVS decay term and one ON comparator-memory
+      update after merge `f026560` duplicated both state transitions.
+- [x] Remove the neighboring duplicate assignments, model-state errors,
+      high-event warnings, event-map comments, and shot-noise conversion from
+      the same merge insertion.
+
 ## Decisions required
 
 - [x] CORE-002: use one in-place update contract for both branches. This
@@ -72,3 +83,5 @@ and CORE-005 remain open.
       [`../findings/core_model.md`](../findings/core_model.md).
 - [x] Verify direct-filter, direct-emulator, and CLI flag propagation for
       `strict_model_validity` without asserting tunable configuration values.
+- [x] Verify the isolated merge-artifact candidate with the full conda suite
+      (`110 passed`).

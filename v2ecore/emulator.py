@@ -117,30 +117,26 @@ class EventEmulator(object):
     SINGLE_PIXEL_STATES_FILENAME = 'pixel-states.dat'
     SINGLE_PIXEL_MAX_SAMPLES = 10000
 
-    # scidvs adaptation
-    def scidvs_dvdt(self, v, tau=None):
-        """
+    def scidvs_dvdt(self, v: torch.Tensor,
+                    tau: torch.Tensor | float | None = None) -> torch.Tensor:
+        """Compute the nonlinear SCIDVS high-pass decay rate.
 
-        Parameters
-        ----------
-            the input 'voltage',
-        v:Tensor
-            actually log intensity in base e units
-        tau:Optional[Tensor]
-            if None, tau is set internally
+        Args:
+            v: High-pass state in natural-log intensity units.
+            tau: Per-pixel or scalar time constant in seconds. The nominal
+                SCIDVS time constant is used when omitted.
 
-        Returns
-        -------
-        the time derivative of the signal
-
+        Returns:
+            Time derivative of the high-pass state in log-intensity units per
+            second.
         """
         if tau is None:
             tau = EventEmulator.SCIDVS_TAU_S  # time constant for small signals = C/g
         # C = 100e-15
         # g = C/tau
-        efold = 1 / 0.7  # efold of sinh conductance in log_e units, based on 1/kappa
-        dvdt = torch.div(1, tau) * torch.sinh(v / efold)
-        return dvdt
+        efold_ = 1 / 0.7  # efold of sinh conductance in log_e units, based on 1/kappa
+        dvdt_ = torch.div(1, tau) * torch.sinh(v / efold_)
+        return dvdt_
 
     SCIDVS_GAIN: float = 2  # gain after highpass
     SCIDVS_TAU_S: float = .01  # small signal time constant in seconds
@@ -1560,11 +1556,15 @@ class EventEmulator(object):
                 self.scidvs_highpass = torch.zeros_like(self.lp_log_frame)
                 self.scidvs_previous_photo = torch.clone(
                     self.lp_log_frame).detach()
-                self.scidvs_previous_photo = torch.clone(
-                    self.lp_log_frame).detach()
-            self.scidvs_highpass += (self.lp_log_frame - self.scidvs_previous_photo) - delta_time * \
-                self.scidvs_dvdt(self.scidvs_highpass, self.scidvs_tau_arr)-delta_time * \
-                self.scidvs_dvdt(self.scidvs_highpass, self.scidvs_tau_arr)
+
+            # Advance the SCIDVS high-pass state by one explicit Euler step for
+            # this input frame.
+            self.scidvs_highpass += (
+                self.lp_log_frame
+                - self.scidvs_previous_photo
+                - delta_time * self.scidvs_dvdt(
+                    self.scidvs_highpass, self.scidvs_tau_arr)
+            )
             self.scidvs_previous_photo = torch.clone(self.lp_log_frame)
 
         # Leak events: switch in diff change amp leaks at some rate
@@ -1592,16 +1592,11 @@ class EventEmulator(object):
         # take input from either photoreceptor or amplified high pass nonlinear filtered scidvs
         photoreceptor = EventEmulator.SCIDVS_GAIN * \
             self.scidvs_highpass if self.scidvs else self.lp_log_frame
-        photoreceptor = EventEmulator.SCIDVS_GAIN * \
-            self.scidvs_highpass if self.scidvs else self.lp_log_frame
 
-        # KEY[F-DIFF]: event-driving contrast is DeltaL = L_photo - L_mem.
         # KEY[F-DIFF]: event-driving contrast is DeltaL = L_photo - L_mem.
         if not self.csdvs_enabled:
             self.diff_frame = photoreceptor + self.photoreceptor_noise_arr - self.base_log_frame
         else:
-            self.c_minus_s_frame = photoreceptor + \
-                self.photoreceptor_noise_arr - self.cs_surround_frame
             self.c_minus_s_frame = photoreceptor + \
                 self.photoreceptor_noise_arr - self.cs_surround_frame
             self.diff_frame = self.c_minus_s_frame - self.base_log_frame
@@ -1611,8 +1606,6 @@ class EventEmulator(object):
                 if not s in self.dont_show_list:
                     f = getattr(self, s, None)
                     if f is None:
-                        v2e_logger.error(
-                            f'{s} does not exist so we cannot show it')
                         v2e_logger.error(
                             f'{s} does not exist so we cannot show it')
                         self.dont_show_list.append(s)
@@ -1625,7 +1618,6 @@ class EventEmulator(object):
         # generate event map
         # print(f'\ndiff_frame max={torch.max(self.diff_frame)} pos_thres mean={torch.mean(self.pos_thres)} expect {int(torch.max(self.diff_frame)/torch.mean(self.pos_thres))} max events')
         # KEY[F-EVENT-MAP-CALL]: quantize DeltaL into ON/OFF event counts.
-        # KEY[F-EVENT-MAP-CALL]: quantize DeltaL into ON/OFF event counts.
         pos_evts_frame, neg_evts_frame = compute_event_map(
             self.diff_frame, self.pos_thres, self.neg_thres)
         max_num_events_any_pixel = max(pos_evts_frame.max(),
@@ -1633,8 +1625,6 @@ class EventEmulator(object):
         max_num_events_any_pixel = max_num_events_any_pixel.item()  # turn singleton tensor to scalar
 
         if max_num_events_any_pixel > 100:
-            v2e_logger.warning(
-                f'Too many events generated for this frame: num_iter={max_num_events_any_pixel}>100 events')
             v2e_logger.warning(
                 f'Too many events generated for this frame: num_iter={max_num_events_any_pixel}>100 events')
 
@@ -1665,10 +1655,6 @@ class EventEmulator(object):
         final_neg_evts_frame = torch.zeros(
             neg_evts_frame.shape, dtype=torch.int32, device=self.device)
 
-        if max_num_events_any_pixel == 0 and self.no_events_warning_count < 100:
-            v2e_logger.warning(
-                f'no signal events generated for frame #{self.frame_counter:,} at t={t_frame:.4f}s')
-            self.no_events_warning_count += 1
         if max_num_events_any_pixel == 0 and self.no_events_warning_count < 100:
             v2e_logger.warning(
                 f'no signal events generated for frame #{self.frame_counter:,} at t={t_frame:.4f}s')
@@ -1833,8 +1819,6 @@ class EventEmulator(object):
             # give noise events the last timestamp generated for any signal event from this frame
             shot_noise_events = self.get_event_list_from_coords(
                 shot_on_xy, shot_off_xy, ts[-1])
-            shot_noise_events = self.get_event_list_from_coords(
-                shot_on_xy, shot_off_xy, ts[-1])
 
             # Append noise events after signal events.
             # We intentionally do not shuffle here to avoid non-monotonic timestamps.
@@ -1851,8 +1835,6 @@ class EventEmulator(object):
 
         # KEY[F-LMEM-UPDATE]: reset-by-increment memory update after emitted
         # ON/OFF events: L_mem <- L_mem +/- k*theta.
-        # TODO should this be self.lp_log_frame ? I.e. output of lowpass photoreceptor?
-        self.base_log_frame += final_pos_evts_frame * self.pos_thres
         # TODO should this be self.lp_log_frame ? I.e. output of lowpass photoreceptor?
         self.base_log_frame += final_pos_evts_frame * self.pos_thres
         self.base_log_frame -= final_neg_evts_frame * self.neg_thres
