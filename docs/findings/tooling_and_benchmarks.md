@@ -9,10 +9,10 @@ Conventions and severity definitions: [`README.md`](README.md).
 
 ## TOOL-001
 
-**Comparative benchmark resolves the wrong repository root**
+**Comparative benchmark resolved the wrong repository root**
 
 - **Severity:** Medium
-- **Status:** Confirmed (probe)
+- **Status:** Resolved (CLI test)
 - **Where:** `v2ecore/benchmarks/benchmark_error_models_eventstream.py`
 
 ### Issue
@@ -55,8 +55,17 @@ Change to `parents[2]` to match `benchmark_emulator.py`, then add the test the
 consolidation plan already calls for: assert `REPO_ROOT` contains a known
 repository-root marker (`pyproject.toml`) so the two scripts cannot drift apart
 again. Any existing artefacts under `v2ecore/output/` should be moved or
-deleted, and `v2ecore/output/` added to `.gitignore` if it is not already
-covered.
+deleted. The tracked `v2ecore/output/` writer package itself must not be added
+to `.gitignore`.
+
+### Resolution
+
+The benchmark now resolves `parents[2]`, and its default output is repository
+relative. A functional entry-point test runs a minimal benchmark from an
+unrelated working directory and verifies that JSON, CSV, and NPZ artifacts are
+written to a temporary output directory. The empty package-local generated
+directory was removed without ignoring the tracked `v2ecore/output/` writer
+package.
 
 ---
 
@@ -284,10 +293,10 @@ makes the two impossible to desynchronise again.
 
 ## TOOL-007
 
-**Parallel histogram branch is never exercised**
+**Parallel histogram branch was never exercised**
 
 - **Severity:** Low
-- **Status:** Confirmed (inspection)
+- **Status:** Resolved (functional test)
 - **Where:** `v2ecore/v2e_utils.py`, `hist2d_numba()` /
   `hist2d_numba_parallel()`
 
@@ -324,3 +333,16 @@ suffices). Separately, re-measure whether the parallel path is actually faster
 on the current runtime before keeping the auto-selection; if it is not, delete
 the branch rather than carrying untested code for a benefit that no longer
 exists.
+
+### Resolution
+
+The public dispatcher now has a functional regression using `1,000,001`
+tracks. It compares the selected implementation with the sequential kernel
+exactly and verifies that every in-range sample is counted.
+
+After JIT and thread-backend warm-up in the maintained `v2e` environment, the
+same input produced median times of about `0.001895 s` for the sequential
+kernel and `0.000609 s` for the parallel kernel, with identical histograms.
+The parallel path is therefore retained: it was approximately 3.1 times faster
+for the production threshold case on the measured runtime. This timing remains
+benchmark evidence, not a test assertion.

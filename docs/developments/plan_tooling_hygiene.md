@@ -8,25 +8,27 @@ and test-suite hygiene. Owns
 Not in scope: the accelerated backend roadmap, which is
 [`performance_optimization_opportunities.md`](performance_optimization_opportunities.md).
 
-Status: open. No prerequisite. Items here are independent of each other and can
-be taken in any order, except TOOL-002 which is coordinated with
+Status: active. TOOL-001 and TOOL-007 are complete; TOOL-002 through TOOL-006
+remain open. Items here are independent of each other, except TOOL-002 which is
+coordinated with
 [`plan_event_ordering.md`](plan_event_ordering.md).
 
 ## Benchmarks
 
-- [ ] Fix `REPO_ROOT` to `parents[2]` in
+- [x] Fix `REPO_ROOT` to `parents[2]` in
       `benchmark_error_models_eventstream.py` (TOOL-001).
-- [ ] Add a test asserting each benchmark's `REPO_ROOT` contains
-      `pyproject.toml`, so the two scripts cannot drift apart again (TOOL-001).
-- [ ] Move or delete any artefacts already written under `v2ecore/output/`, and
-      confirm that path is git-ignored (TOOL-001).
+- [x] Add a functional test for the comparative benchmark's repository-relative
+      default and a real run from outside the checkout (TOOL-001).
+- [x] Remove the empty generated `v2ecore/output/benchmarks_comparative/`
+      directory. Repository-root `output/*` is already ignored; the tracked
+      `v2ecore/output/` writer package must not be ignored (TOOL-001).
 - [ ] Measure and report raw-stream monotonicity violations **before** any
       sorting: count, largest backward step, and the packet boundary where each
       occurs (TOOL-002).
 - [ ] Restrict the sorted copy to metrics that are genuinely order-invariant,
       and label sorted-derived metrics in the JSON/CSV output (TOOL-002).
-- [ ] Remove or isolate the pytest-collected print-only timing functions so they
-      are not mistaken for regressions.
+- [x] Remove the pytest-collected print-only timing functions so they are not
+      mistaken for regressions.
 
 ## Estimator numerics
 
@@ -56,19 +58,23 @@ be taken in any order, except TOOL-002 which is coordinated with
 
 ## Test suite
 
-- [ ] Add a correctness test crossing the `1_000_000`-track threshold, asserting
-      the parallel histogram equals the sequential result exactly (TOOL-007).
-- [ ] Re-measure whether the parallel path is faster on the current runtime;
-      delete the branch if it is not (TOOL-007).
-- [ ] Remove the duplicated emulator test shared between
+- [x] Add a correctness test crossing the `1_000_000`-track threshold,
+      asserting the public histogram equals the sequential result exactly
+      (TOOL-007).
+- [x] Re-measure the warmed kernels on the current runtime. Retain the parallel
+      branch because it is about 3.1 times faster at `1,000,001` tracks while
+      producing the exact sequential result (TOOL-007).
+- [x] Remove the duplicated emulator test shared between
       `test_optimizations.py` and `test_emulator_regression.py`.
 
 ## Gate
 
-- [ ] `conda run -n v2e python -m pytest -q`.
-- [ ] `conda run -n v2e python -m compileall -q v2e.py v2ecore test`.
-- [ ] `git diff --check`.
-- [ ] Benchmarks run from a directory other than the repository root and write
-      to the repository `output/` tree.
-- [ ] Mark resolved findings in
+- [x] `conda run -n v2e python -m pytest -q` (`100 passed` in the isolated
+      histogram/test-hygiene candidate).
+- [x] `conda run -n v2e python -m compileall -q v2e.py v2ecore test`.
+- [x] `python3.12 -m compileall -q v2e.py v2ecore test`.
+- [x] `git diff --check`.
+- [x] Comparative benchmark runs from a directory other than the repository
+      root and writes smoke-test artifacts to a temporary output directory.
+- [x] Mark resolved findings in
       [`../findings/tooling_and_benchmarks.md`](../findings/tooling_and_benchmarks.md).

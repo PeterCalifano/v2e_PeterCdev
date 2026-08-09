@@ -14,7 +14,7 @@ from v2ecore.emulator_utils import (
     apply_low_pass_filter,
     compute_event_map,
 )
-from v2ecore.v2e_utils import hist2d_numba_seq, hist2d_numba_parallel, hist2d_numba
+from v2ecore.v2e_utils import hist2d_numba, hist2d_numba_seq
 from v2ecore.emulator import EventEmulator
 
 
@@ -304,13 +304,13 @@ class TestComputeEventMap:
 
 
 # ---------------------------------------------------------------------------
-# hist2d parallel tests
+# Histogram tests
 # ---------------------------------------------------------------------------
 
-class TestHist2dParallel:
-    """Verify parallel histogram matches sequential version."""
+class TestHist2d:
+    """Verify histogram behavior across representative input sizes."""
 
-    def test_identical_output(self):
+    def test_identical_output(self) -> None:
         rng = np.random.default_rng(42)
         n_tracks = 10_000
         height, width = 64, 64
@@ -322,87 +322,52 @@ class TestHist2dParallel:
         ranges = np.array([[0, height], [0, width]], dtype=np.int64)
 
         h_seq = hist2d_numba_seq(tracks, bins, ranges)
-        h_par = hist2d_numba_parallel(tracks, bins, ranges)
+        h_auto = hist2d_numba(tracks, bins, ranges)
 
-        np.testing.assert_array_equal(h_seq, h_par)
+        np.testing.assert_array_equal(h_seq, h_auto)
 
-    def test_empty_tracks(self):
+    def test_empty_tracks(self) -> None:
         tracks = np.zeros((2, 0), dtype=np.float64)
         bins = np.array([16, 16], dtype=np.int64)
         ranges = np.array([[0, 16], [0, 16]], dtype=np.int64)
 
         h_seq = hist2d_numba_seq(tracks, bins, ranges)
-        h_par = hist2d_numba_parallel(tracks, bins, ranges)
+        h_auto = hist2d_numba(tracks, bins, ranges)
 
-        np.testing.assert_array_equal(h_seq, h_par)
+        np.testing.assert_array_equal(h_seq, h_auto)
         assert h_seq.sum() == 0
 
-    def test_auto_select_small(self):
-        """Small track count → should use sequential."""
+    def test_small_input_counts_all_tracks(self) -> None:
+        """Small inputs retain every in-range coordinate."""
         tracks = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
         bins = np.array([10, 10], dtype=np.int64)
         ranges = np.array([[0, 10], [0, 10]], dtype=np.int64)
         h = hist2d_numba(tracks, bins, ranges)
         assert h.sum() == 2
 
-    def test_auto_select_large(self):
-        """Large track count → should use parallel (still correct)."""
+    def test_large_input_matches_sequential_result(self) -> None:
+        """Production-scale input preserves every histogram count."""
         rng = np.random.default_rng(99)
-        n = 100_000
+        n = 1_000_001
         tracks = np.stack([
             rng.uniform(0, 32, n),
             rng.uniform(0, 32, n),
         ]).astype(np.float64)
         bins = np.array([32, 32], dtype=np.int64)
         ranges = np.array([[0, 32], [0, 32]], dtype=np.int64)
-        h = hist2d_numba(tracks, bins, ranges)
-        assert h.sum() == n
+        expected = hist2d_numba_seq(tracks, bins, ranges)
+        actual = hist2d_numba(tracks, bins, ranges)
+
+        np.testing.assert_array_equal(actual, expected)
+        assert actual.sum() == n
 
 
 # ---------------------------------------------------------------------------
 # Event generation sanity tests (not tied to specific optimization)
 # ---------------------------------------------------------------------------
 
-def _assert_event_packet_valid(events: np.ndarray, height: int, width: int) -> None:
-    assert events is not None
-    assert events.ndim == 2
-    assert events.shape[1] == 4
-    assert np.all(np.diff(events[:, 0]) >= 0)
-    assert np.all(events[:, 1] >= 0)
-    assert np.all(events[:, 1] < width)
-    assert np.all(events[:, 2] >= 0)
-    assert np.all(events[:, 2] < height)
-    assert set(np.unique(events[:, 3])).issubset({-1.0, 1.0})
-
-
 class TestEventGenerationSanity:
     """Basic sanity tests for event generation (not specific to buffer optimization)."""
-
-    def test_basic_event_generation(self):
-        height, width = 24, 32
-        emu = EventEmulator(
-            pos_thres=0.2,
-            neg_thres=0.2,
-            sigma_thres=0.0,
-            cutoff_hz=0.0,
-            leak_rate_hz=0.0,
-            shot_noise_rate_hz=0.0,
-            photoreceptor_noise=False,
-            refractory_period_s=0.0,
-            seed=42,
-            output_width=width,
-            output_height=height,
-            device="cpu",
-        )
-
-        frame_0 = np.zeros((height, width), dtype=np.uint8)
-        frame_1 = np.full((height, width), 255, dtype=np.uint8)
-
-        assert emu.generate_events(frame_0, 0.0) is None
-        events = emu.generate_events(frame_1, 1.0 / 30.0)
-        emu.cleanup()
-
-        _assert_event_packet_valid(events, height=height, width=width)
 
     def test_zero_contrast_no_signal_events(self):
         """Same frame twice should produce zero signal events."""

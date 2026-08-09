@@ -1,7 +1,7 @@
 # v2e Capabilities and Current Status
 
 Status date: 2026-08-09
-Current reviewed baseline: `8af99eb`
+Current reviewed baseline: `6d5f188`
 Branch: `feature/extend_error_models_IEBCS_V2CE`
 
 This is the single current capability/status summary: what the repository can do
@@ -16,7 +16,7 @@ explanations and no action items.
 
 - Environment: `conda run -n v2e python --version` -> `Python 3.11.11`
 - Full suite: `conda run -n v2e python -m pytest -q`
-- Isolated finite-option candidate: `116 passed`
+- Isolated histogram/test-hygiene candidate: `100 passed`
 - `EventDataGenerationLib` direct conversion: `4 passed`
 - `EventDataGenerationLib` persistent context: `1 passed, 1 failed`; the
   remaining assertion compares different seeds after every fixture stream
@@ -153,11 +153,11 @@ The ordered work to resolve them is in
 
 ## Open-Tree Changes Awaiting Commit
 
-The current candidate adds native string-enum domains for finite DVS, IEBCS,
-V2CE, and renderer options. CLI names and values are unchanged, legacy strings
-remain accepted by direct APIs, and benchmark profiles use the same option
-domain as the emulator. The new option module is included atomically with every
-production importer. Sequencing and remaining commit boundaries are owned by
+The current candidate adds an exact million-track regression for the public
+histogram dispatcher, retains its measured-faster parallel implementation, and
+removes print-only pytest timing modules plus one duplicated emulator sanity
+test. Estimator numerics, package identity, and sensor-behaviour changes remain
+outside this batch. Sequencing and remaining commit boundaries are owned by
 [`developments/consolidation_staged_plan.md`](developments/consolidation_staged_plan.md).
 
 ## Recent Commit Reassessment
@@ -169,8 +169,8 @@ production importer. Sequencing and remaining commit boundaries are owned by
 - `fb40595`: added optimization work; its low-pass regressions were resolved by
   `bc8f17d`.
 - `f026560`: merged `dev_main`; conflict resolution duplicated stateful side
-  effects and writer calls. `7d497f6` repaired writer dispatch; the current
-  candidate repairs the remaining hot-path duplicates.
+  effects and writer calls. `7d497f6` repaired writer dispatch and `8af99eb`
+  repaired the remaining hot-path duplicates.
 - `6b66007`, `a7a4071`, `379db53`: reorganized and implemented comparative
   benchmarks; raw global ordering is currently hidden by post-sort.
 - `50cbe8b`, `969dcc5`: expanded status/docs, but linked untracked files and
@@ -188,6 +188,8 @@ production importer. Sequencing and remaining commit boundaries are owned by
   per output resource.
 - `8af99eb`: restored single-pass SCIDVS decay, comparator-memory advancement,
   warning accounting, and neighboring merge-duplicated hot-path operations.
+- `6d5f188`: consolidated finite DVS, IEBCS, V2CE, and renderer options as
+  native string enums while preserving public CLI nomenclature.
 
 ## Workspace Integrations
 
